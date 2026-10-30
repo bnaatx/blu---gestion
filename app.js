@@ -44,7 +44,14 @@ const remo = p => p.remodelacion || "pendiente";
 const activos = () => S.productos.filter(p => remo(p) !== "archivado");
 
 const pedSub = p => p.lineas.reduce((a, l) => a + l.cantidad * l.precio, 0);
-const pedTotal = p => pedSub(p) + (p.envioPaga === "cliente" ? (+p.envio || 0) : 0);
+/* Envío: "contado" = viene en la factura y el cliente lo paga con el pedido; "contraentrega" = lo paga al recibir y no entra en el total */
+const modoEnvio = p => p.envioModo || (p.envioPaga === "yo" ? "blu" : "contado");
+const pedTotal = p => pedSub(p) + (modoEnvio(p) === "contado" ? (+p.envio || 0) : 0);
+function envioPorCiudad(ciudad) {
+  const c = norm(ciudad); if (!c) return null;
+  const prev = S.pedidos.filter(p => norm(p.ciudad) === c && +p.envio > 0).sort((a, b) => b.fecha.localeCompare(a.fecha) || b.n - a.n)[0];
+  return prev ? { valor: +prev.envio, fecha: prev.fecha } : null;
+}
 const pedCosto = p => p.lineas.reduce((a, l) => a + l.cantidad * (l.costo || 0), 0);
 const pedGan = p => pedSub(p) - pedCosto(p) - (p.envioPaga === "yo" ? (+p.envio || 0) : 0);
 const unidades = p => p.lineas.reduce((a, l) => a + l.cantidad, 0);
@@ -214,7 +221,7 @@ function orderCard(p, opts = {}) {
     </div>
     ${opts.track && p.estado !== "perdido" ? `<div class="track" aria-hidden="true">${ESTADOS.map((e, k) => `<i class="${k <= i ? "on" : ""}"></i>`).join("")}</div>` : ""}
     <div class="items">${p.lineas.map(l => `<div class="it"><div class="it-main"><span class="qty">${l.cantidad}</span><div class="grow"><b>${esc(l.nombre)}</b><div class="muted small">${esc(l.tipo)}${l.cantidad > 1 ? " · " + $(l.precio) + " c/u" : ""}${l.nota ? " · " + esc(l.nota) : ""}</div>${l.tarjeta ? '<span class="tag card-tag">💌 Tarjeta personalizada</span>' : ""}</div></div><span class="num">${$(l.cantidad * l.precio)}</span></div>`).join("")}
-      ${p.envio ? `<div class="muted"><span>Envío · paga ${p.envioPaga === "yo" ? "Blu" : "el cliente"}</span><span class="num">${$(p.envio)}</span></div>` : ""}</div>
+      ${p.envio || modoEnvio(p) === "contraentrega" ? `<div class="muted"><span>Envío ${modoEnvio(p) === "contraentrega" ? "contraentrega · lo paga al recibir" : modoEnvio(p) === "blu" ? "· lo pagó Blu" : "contado"}</span><span class="num">${p.envio ? $(p.envio) : "—"}</span></div>` : ""}</div>
     <div class="row between wrap">
       <div class="row wrap" style="gap:6px">${pagoDe(p) !== "pagado" ? `<span class="pill pg-${pagoDe(p)}">${PAGO_LABEL[pagoDe(p)]}</span>` : ""}${p.precioTipo === "mayor" ? '<span class="pill wa-mayorista">Cliente mayorista</span>' : ""}${p.importado ? '<span class="tag">Del Excel</span>' : ""}</div>
       <div style="text-align:right"><span class="money">${$(pedTotal(p))}</span>${saldo(p) && saldo(p) < pedTotal(p) ? `<div class="small muted">Abonó ${$(p.abono)} · debe ${$(saldo(p))}</div>` : saldo(p) ? `<div class="small" style="color:var(--loss)">Debe ${$(saldo(p))}</div>` : ""}</div>
@@ -429,7 +436,7 @@ function closeSheet() { sheetRoot.innerHTML = ""; document.body.style.overflow =
 /* Nuevo pedido */
 let draft = null;
 function newOrder() {
-  draft = { fecha: today(), cliente: "", celular: "", cc: "", ciudad: "", direccion: "", precioTipo: "detal", envio: 0, envioPaga: "cliente", pago: "pendiente", abono: 0, estado: "pendiente", lineas: [], q: "", pegado: "" };
+  draft = { fecha: today(), cliente: "", celular: "", cc: "", ciudad: "", direccion: "", precioTipo: "detal", envio: 0, envioModo: "contraentrega", envioAuto: true, pago: "pendiente", abono: 0, estado: "pendiente", lineas: [], q: "", pegado: "" };
   openSheet("Nuevo pedido", `<div id="orderForm"></div>`, () => drawOrderForm());
 }
 const priceFor = (p, t) => t === "mayor" ? p.mayor : p.menor;
@@ -464,15 +471,18 @@ function drawOrderForm(focusId) {
     <span class="muted small" style="margin-left:auto">c/u</span><input id="lp_${i}" inputmode="numeric" data-lp="${i}" value="${l.precio}" aria-label="Precio por unidad de ${esc(l.nombre)}"></div>
     <div class="ctl"><span class="lbl">Tarjeta personalizada</span><div class="seg mini" role="group" aria-label="Tarjeta personalizada para ${esc(l.nombre)}" style="margin-left:auto"><button type="button" data-action="tarjeta" data-i="${i}" data-v="1" aria-pressed="${!!l.tarjeta}">Sí</button><button type="button" data-action="tarjeta" data-i="${i}" data-v="0" aria-pressed="${!l.tarjeta}">No</button></div></div></div>`).join("")}</div>` : ""}
   ${faltan.length ? `<div class="warn">No alcanza el stock de: ${faltan.map(l => esc(l.nombre)).join(", ")}. Puedes guardarlo igual; el inventario quedará en negativo hasta que las fabriques.</div>` : ""}
-  <div class="grid2"><div class="field"><label for="f_envio">Valor envío</label><input id="f_envio" inputmode="numeric" data-f="envio" value="${d.envio || ""}" placeholder="0"></div>
-    <div class="field"><span class="lbl">¿Quién paga el envío?</span><div class="seg"><button type="button" data-action="paga" data-v="cliente" aria-pressed="${d.envioPaga === "cliente"}">Cliente</button><button type="button" data-action="paga" data-v="yo" aria-pressed="${d.envioPaga === "yo"}">Blu</button></div></div></div>
+  <div class="field"><span class="lbl">Envío</span><div class="seg"><button type="button" data-action="envmodo" data-v="contado" aria-pressed="${d.envioModo === "contado"}">Contado</button><button type="button" data-action="envmodo" data-v="contraentrega" aria-pressed="${d.envioModo === "contraentrega"}">Contraentrega</button></div></div>
+  <div class="field"><label for="f_envio">Valor del envío ${d.envioModo === "contraentrega" ? "(lo paga al recibir)" : ""}</label><input id="f_envio" inputmode="numeric" data-f="envio" value="${d.envio || ""}" placeholder="0"></div>
+  ${(() => { const e = envioPorCiudad(d.ciudad);
+    return `<div class="row wrap small muted" style="gap:8px;margin-top:-6px">${e ? `<span>Último envío a ${esc(d.ciudad)}: <b>${$(e.valor)}</b> (${fmtDate(e.fecha)})</span>${+d.envio !== e.valor ? `<button class="btn sm ghost" type="button" data-action="usar-envio" data-v="${e.valor}">Usar</button>` : ""}` : d.ciudad ? `<span>No tienes envíos anteriores a ${esc(d.ciudad)}.</span>` : ""}
+      <a class="buy" href="https://www.interrapidisimo.com/" target="_blank" rel="noopener" style="background:var(--soft);color:var(--pink-press)">Cotizar en Interrapidísimo</a></div>`; })()}
   <div class="field"><span class="lbl">Pago</span><div class="seg" style="grid-template-columns:repeat(3,1fr)">
     <button type="button" data-action="pago" data-v="pagado" aria-pressed="${d.pago === "pagado"}">Pagó todo</button>
     <button type="button" data-action="pago" data-v="abono" aria-pressed="${d.pago === "abono"}">Abonó</button>
     <button type="button" data-action="pago" data-v="pendiente" aria-pressed="${d.pago === "pendiente"}">No ha pagado</button></div></div>
   ${d.pago === "abono" ? `<div class="field"><label for="f_abono">Valor del abono</label><input id="f_abono" inputmode="numeric" data-f="abono" value="${d.abono || ""}" placeholder="${Math.round(pedTotal(d) / 2)}"></div>` : ""}
   <div class="totals"><div><span>Productos</span><span>${$(pedSub(d))}</span></div>
-    ${d.envio ? `<div><span>Envío ${d.envioPaga === "yo" ? "(lo pagas tú)" : ""}</span><span>${d.envioPaga === "yo" ? "—" : $(d.envio)}</span></div>` : ""}
+    ${d.envio ? `<div><span>Envío ${d.envioModo === "contraentrega" ? "(contraentrega, no se suma)" : "contado"}</span><span>${d.envioModo === "contraentrega" ? "—" : $(d.envio)}</span></div>` : ""}
     <div class="t"><span>Total a cobrar</span><span>${$(pedTotal(d))}</span></div>
     ${d.pago === "abono" ? `<div><span>Abono</span><span>${$(d.abono)}</span></div><div><span>Saldo pendiente</span><span>${$(Math.max(0, pedTotal(d) - (+d.abono || 0)))}</span></div>` : ""}
     <div class="small muted"><span>Ganancia estimada</span><span>${$(pedGan(d))}</span></div></div>
@@ -582,21 +592,29 @@ function aplicarOrganizado() {
       if (precio === p.mayor && p.mayor !== p.menor) draft.precioTipo = "mayor";
     } else { sinMatch.push(x.texto); draft.lineas.push({ codigo: null, nombre: x.texto, tipo: "No está en el catálogo", cantidad: x.cantidad, precio, costo: 0, tarjeta: x.tarjeta, nota: x.nota }); }
   });
-  if (f.envio) { draft.envio = f.envio; draft.envioPaga = "cliente"; }
+  if (f.envio) { draft.envio = f.envio; draft.envioModo = "contado"; draft.envioAuto = false; }
+  else if (f.lineas.length) { draft.envioModo = "contraentrega"; }
+  autoEnvio();
   if (f.abono) { draft.pago = "abono"; draft.abono = f.abono; } else if (f.pagado) draft.pago = "pagado";
   if (!campos.length && !f.lineas.length) { toast("No encontré datos en ese mensaje"); return; }
+  if (campos.includes("ciudad")) autoEnvio();
   draft.pegado = ""; drawOrderForm();
   toast(sinMatch.length ? "Revisa: no encontré “" + sinMatch.join("”, “") + "” en el catálogo" : f.lineas.length ? "Listo: " + f.lineas.length + " producto" + (f.lineas.length > 1 ? "s" : "") + " agregado" + (f.lineas.length > 1 ? "s" : "") + ". Revisa antes de guardar" : "Listo. Revisa que cada dato quedó en su lugar");
 }
 let draftPegadoUsado = false;
 
+/* En contraentrega, si no has escrito el valor, se llena con lo que cobró Interrapidísimo la última vez a esa ciudad */
+function autoEnvio() {
+  if (!draft || draft.envioModo !== "contraentrega" || !draft.envioAuto) return;
+  const e = envioPorCiudad(draft.ciudad); draft.envio = e ? e.valor : 0;
+}
 function saveOrder() {
   const d = draft, err = $id("formErr"), miss = [];
   if (!d.cliente.trim()) miss.push("el nombre del cliente");
   if (!d.lineas.length) miss.push("al menos un producto");
   if (miss.length) { err.hidden = false; err.textContent = "Falta " + miss.join(" y ") + "."; return; }
   d.lineas.forEach(l => { const p = S.productos.find(x => x.codigo === l.codigo); if (p) { p.stock -= l.cantidad; guardar("productos", p); } });
-  const ped = { ...d, id: "p" + Date.now(), n: nextN(), envio: +d.envio || 0, pagado: d.pago === "pagado", abono: d.pago === "abono" ? (+d.abono || 0) : 0 }; delete ped.q; delete ped.pegado;
+  const ped = { ...d, id: "p" + Date.now(), n: nextN(), envio: +d.envio || 0, envioPaga: undefined, pagado: d.pago === "pagado", abono: d.pago === "abono" ? (+d.abono || 0) : 0 }; delete ped.q; delete ped.pegado; delete ped.envioAuto; delete ped.envioPaga;
   S.pedidos.push(ped); guardar("pedidos", ped); closeSheet(); ui.pedFiltro = "activos"; go("pedidos"); toast("Pedido #" + ped.n + " guardado · stock descontado");
 }
 function verPedido(id) {
@@ -710,7 +728,7 @@ async function descargarExcel() {
   try { await cargarXLSX(); } catch (e) { toast("No se pudo armar el Excel. Revisa tu conexión"); return; }
   const fila = (p, l) => ({ "N° pedido": p.n, "Fecha": p.fecha, "Estado": EST_LABEL[p.estado], "Cliente": p.cliente, "Cédula": p.cc, "Celular": p.celular, "Ciudad": p.ciudad, "Dirección": p.direccion,
     "Producto": l.nombre, "Tipo": l.tipo, "Cantidad": l.cantidad, "Precio unitario": l.precio, "Subtotal": l.cantidad * l.precio, "Costo": l.cantidad * (l.costo || 0),
-    "Envío": p.envio, "Paga envío": p.envioPaga === "yo" ? "Blu" : "Cliente", "Pago": PAGO_LABEL[pagoDe(p)], "Abono": p.abono || 0, "Saldo": saldo(p), "Precio": p.precioTipo === "mayor" ? "Por mayor" : "Detal" });
+    "Envío": p.envio, "Tipo de envío": { contado: "Contado", contraentrega: "Contraentrega", blu: "Lo pagó Blu" }[modoEnvio(p)], "Pago": PAGO_LABEL[pagoDe(p)], "Abono": p.abono || 0, "Saldo": saldo(p), "Precio": p.precioTipo === "mayor" ? "Por mayor" : "Detal" });
   const rows = arr => arr.slice().sort((a, b) => a.n - b.n).flatMap(p => p.lineas.map(l => fila(p, l)));
   const wb = XLSX.utils.book_new();
   const add = (name, data) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.length ? data : [{}]), name);
@@ -760,7 +778,8 @@ document.addEventListener("click", e => {
     case "new-order": newOrder(); break;
     case "close": case "close-bg": closeSheet(); break;
     case "ptipo": draft.precioTipo = v; draft.lineas.forEach(l => { const p = S.productos.find(x => x.codigo === l.codigo); if (p) l.precio = priceFor(p, v); }); drawOrderForm(); break;
-    case "paga": draft.envioPaga = v; drawOrderForm(); break;
+    case "envmodo": draft.envioModo = v; if (v === "contraentrega" && !+draft.envio) { draft.envioAuto = true; autoEnvio(); } drawOrderForm(); break;
+    case "usar-envio": draft.envio = +v; draft.envioAuto = false; drawOrderForm(); break;
     case "pago": draft.pago = v; if (v === "abono" && !draft.abono) draft.abono = Math.round(pedTotal(draft) / 2); drawOrderForm(); break;
     case "add-line": { const p = prodC(); const ex = draft.lineas.find(l => l.codigo === p.codigo);
       if (ex) ex.cantidad++; else draft.lineas.push({ codigo: p.codigo, nombre: p.nombre, tipo: p.tipo, cantidad: 1, precio: priceFor(p, draft.precioTipo), costo: costoProd(p) });
@@ -838,7 +857,10 @@ document.addEventListener("keydown", e => {
 document.addEventListener("input", e => {
   const t = e.target;
   if (t.dataset.input) { ui[t.dataset.input] = t.value; clearTimeout(window._bt); const id = t.id; window._bt = setTimeout(() => { render(); const el = $id(id); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 180); return; }
-  if (t.dataset.f && draft) { const k = t.dataset.f; draft[k] = (k === "envio" || k === "abono") ? num(t.value) : t.value; if (k === "q" || k === "envio" || k === "abono") drawOrderForm(t.id); return; }
+  if (t.dataset.f && draft) { const k = t.dataset.f; draft[k] = (k === "envio" || k === "abono") ? num(t.value) : t.value;
+    if (k === "envio") draft.envioAuto = false;
+    if (k === "ciudad") { clearTimeout(window._ct); window._ct = setTimeout(() => { if (!draft) return; autoEnvio(); drawOrderForm("f_ciudad"); }, 500); }
+    if (k === "q" || k === "envio" || k === "abono") drawOrderForm(t.id); return; }
   if (t.dataset.lp && draft) { draft.lineas[+t.dataset.lp].precio = num(t.value); drawOrderForm(t.id); return; }
   if (t.dataset.pp && editing) { const k = t.dataset.pp; editing[k] = (k === "nombre" || k === "tipo") ? t.value : (k === "stock" ? (parseInt(t.value, 10) || 0) : num(t.value)); drawProdTot(); return; }
   if (t.dataset.mm && editingMat) { const k = t.dataset.mm; editingMat[k] = (k === "cantidad" || k === "precio") ? num(t.value) : t.value; return; }
