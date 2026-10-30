@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Blu Gestión</title>
+<meta name="theme-color" content="#D44B86">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Blu">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="img/icon-180.png">
+<link rel="icon" type="image/png" href="img/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<section class="login" id="login" hidden>
+  <div class="logo" role="img" aria-label="Blu Accesories"></div>
+  <form id="loginForm" novalidate>
+    <h2>Entrar</h2>
+    <div class="field"><label for="l_email">Correo</label><input id="l_email" type="email" autocomplete="username" required></div>
+    <div class="field"><label for="l_pass">Contraseña</label><input id="l_pass" type="password" autocomplete="current-password" required></div>
+    <div id="loginErr" class="warn" hidden></div>
+    <button class="btn block" type="submit" id="loginBtn">Entrar</button>
+  </form>
+  <p>Usa el correo y la contraseña que creaste en Supabase.</p>
+</section>
+
+<div id="shell" hidden>
+  <header class="top">
+    <div class="logo" role="img" aria-label="Blu Accesories"></div>
+    <h1 id="viewTitle">Inicio</h1>
+  </header>
+
+  <main id="app"></main>
+
+  <button class="btn fab" id="fab" type="button" hidden>+ Nuevo pedido</button>
+
+  <nav class="tabs" aria-label="Secciones">
+    <button type="button" data-tab="inicio"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg>Inicio</button>
+    <button type="button" data-tab="pedidos"><svg viewBox="0 0 24 24"><path d="M5 8h14l-1 12H6z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg>Pedidos</button>
+    <button type="button" data-tab="ventas"><svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l4-4 3 3 5-6"/></svg>Ventas</button>
+    <button type="button" data-tab="stock"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></svg>Inventario</button>
+    <button type="button" data-tab="catalogo"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="5" r="1.6"/><circle cx="17" cy="16.5" r="1.6"/><circle cx="7" cy="16.5" r="1.6"/></svg>Catálogo</button>
+    <button type="button" data-tab="contenido"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>Contenido</button>
+  </nav>
+</div>
+
+<div id="sheetRoot"></div>
+<div id="toastRoot"></div>
+
+<script src="vendor/supabase.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
