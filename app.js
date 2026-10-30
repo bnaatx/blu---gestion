@@ -227,7 +227,7 @@ function vInicio() {
 /* ---------- Pedidos ---------- */
 function orderCard(p, opts = {}) {
   const i = ESTADOS.indexOf(p.estado);
-  return `<article class="card order">
+  return `<article class="card order oc-${etapa(p)}">
     <div class="row between" style="align-items:flex-start">
       <div class="grow"><div class="who">${esc(p.cliente)}</div><div class="muted small">#${p.n} · ${fmtDate(p.fecha)} · ${esc(p.ciudad)}</div></div>
       <span class="pill ${etClase(etapa(p))}">${etLabel(etapa(p))}</span>

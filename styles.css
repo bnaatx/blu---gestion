@@ -231,3 +231,25 @@ button,a,input,select,textarea,label{touch-action:manipulation}
 .seg.mini{padding:3px;gap:3px;grid-template-columns:auto auto}
 .seg.mini button{padding:5px 14px;font-size:13px}
 .line-item .ctl .lbl{white-space:nowrap}
+
+/* Cada pedido toma el color de su estado (colores de las etiquetas de WhatsApp) */
+.order{--oc:var(--pink);--oc-soft:var(--soft);--oc-line:var(--line);border-color:var(--oc-line);border-width:2px;background:linear-gradient(var(--oc-soft),var(--oc-soft)) top/100% 6px no-repeat,var(--white)}
+.oc-pendiente{--oc:#8DCAA8;--oc-soft:#EEF8F2;--oc-line:#CFEADB}
+.oc-apartado{--oc:#652A79;--oc-soft:#F1E8F4;--oc-line:#D7C3DF}
+.oc-pagopend{--oc:#E7B54D;--oc-soft:#FDF5E4;--oc-line:#F3DDAA}
+.oc-empacado{--oc:#94A74F;--oc-soft:#F2F5E9;--oc-line:#D6DFB8}
+.oc-enviado{--oc:#C09FC9;--oc-soft:#F7F2F9;--oc-line:#E2D4E7}
+.oc-entregado{--oc:#5FC1D8;--oc-soft:#EAF7FA;--oc-line:#BFE6EF}
+.oc-perdido{--oc:#6E2738;--oc-soft:#F4E9EC;--oc-line:#D9B9C1}
+.order{background:var(--white);box-shadow:inset 0 5px 0 var(--oc)}
+.order .track i.on{background:var(--oc)}
+.order .qty{background:var(--oc-soft);color:var(--oc);box-shadow:inset 0 0 0 1.5px var(--oc-line)}
+.order .items{border-top-color:var(--oc-line)}
+.order .btn:not(.ghost){background:var(--oc);color:#FFFFFF;text-shadow:0 1px 1px rgba(0,0,0,.18)}
+.order .btn:not(.ghost):active{filter:brightness(.92)}
+.order .btn.ghost{background:var(--oc-soft);color:var(--oc)}
+.oc-pendiente{--oc-ink:#3E7A58}.oc-apartado{--oc-ink:#652A79}.oc-pagopend{--oc-ink:#8A6418}.oc-empacado{--oc-ink:#5E6E2A}
+.oc-enviado{--oc-ink:#7A5585}.oc-entregado{--oc-ink:#20788D}.oc-perdido{--oc-ink:#6E2738}
+.order .btn.ghost{color:var(--oc-ink)}
+.order .qty{color:var(--oc-ink)}
+.order .money{color:var(--ink)}
