@@ -212,3 +212,10 @@ nav.tabs button{font-size:10.5px}
 
 .pill.st-pendiente,.pill.pg-abono,.pill.pg-pendiente,.pill.st-empacado,.pill.st-enviado,.pill.st-entregado,.pill.wa-mayorista,.pill.st-perdido,.state{text-shadow:0 1px 1px rgba(0,0,0,.18)}
 .state.st-pendiente,.state.st-empacado,.state.st-enviado,.state.st-entregado{color:#FFFFFF}
+
+/* Inicio: apartados y pagos pendientes */
+.pagos{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pago-tile{border:none;border-radius:14px;padding:12px 14px;text-align:left;cursor:pointer;display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:10px;align-items:center;text-shadow:0 1px 1px rgba(0,0,0,.18)}
+.pago-tile b{grid-row:1/3;font-size:28px;line-height:1;font-weight:700;font-variant-numeric:tabular-nums}
+.pago-tile span{font-size:13px;font-weight:600}
+.pago-tile em{font-style:normal;font-size:12px;opacity:.95;font-variant-numeric:tabular-nums}

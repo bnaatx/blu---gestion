@@ -163,6 +163,13 @@ function vInicio() {
   <section class="states" aria-label="Pedidos por estado">
     ${ESTADOS.map(e => `<button type="button" class="state st-${e}" data-action="filtro-ped" data-v="${e}"><b>${cuenta(e)}</b><span>${EST_LABEL[e]}${e === "entregado" ? "<br>este mes" : ""}</span></button>`).join("")}
   </section>
+  ${(() => {
+    const ap = S.pedidos.filter(p => pagoDe(p) === "abono" && p.estado !== "perdido"), pp = S.pedidos.filter(p => pagoDe(p) === "pendiente" && p.estado !== "perdido");
+    const deben = arr => arr.reduce((s, p) => s + saldo(p), 0);
+    return `<section class="pagos" aria-label="Pagos por cobrar">
+      <button type="button" class="pago-tile pg-abono" data-action="ir-ventas" data-v="apartado"><b>${ap.length}</b><span>Apartados</span><em>Deben ${$(deben(ap))}</em></button>
+      <button type="button" class="pago-tile pg-pendiente" data-action="ir-ventas" data-v="pagopend"><b>${pp.length}</b><span>Pago pendiente</span><em>Deben ${$(deben(pp))}</em></button>
+    </section>`; })()}
   <section class="hero">
     <span class="sub">Ganancia de ${MESES[d.getMonth()]}</span>
     <span class="big">${$(gan)}</span>
@@ -758,6 +765,7 @@ document.addEventListener("click", e => {
     case "perdido": { const p = S.pedidos.find(x => x.id === t.dataset.id); p.estado = "perdido"; guardar("pedidos", p); closeSheet(); render(); toast("Pedido #" + p.n + " marcado como envío perdido"); break; }
     case "v-seg": ui.ventasSeg = v; render(); break;
     case "v-est": ui.ventasEst = v; render(); break;
+    case "ir-ventas": ui.ventasSeg = "ventas"; ui.ventasEst = v; ui.ventasMes = ""; go("ventas"); break;
     case "new-inv": editInv(null); break;
     case "edit-inv": editInv(t.dataset.id); break;
     case "save-inv": { const i = editingInv; if (!i.descripcion.trim() || !i.valor) { toast("Escribe qué compraste y el valor"); return; }
