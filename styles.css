@@ -253,3 +253,16 @@ button,a,input,select,textarea,label{touch-action:manipulation}
 .order .btn.ghost{color:var(--oc-ink)}
 .order .qty{color:var(--oc-ink)}
 .order .money{color:var(--ink)}
+
+/* Fotos de productos */
+.thumb{flex:none;width:44px;height:44px;border-radius:10px;object-fit:cover;background:var(--rosa);display:block}
+.thumb.sm{width:34px;height:34px;border-radius:8px}
+.thumb.lg{width:56px;height:56px;border-radius:12px;margin-right:10px}
+.thumb.ph{background:var(--rosa) url("img/iso.png") center/45% no-repeat;opacity:.55}
+.foto-edit{display:flex;flex-direction:column;gap:10px}
+.foto-big{width:100%;max-width:100%;aspect-ratio:1/1;max-height:320px;object-fit:cover;border-radius:16px;background:var(--soft)}
+.foto-big.ph{display:grid;place-items:center;color:var(--muted);font-size:13px;border:1.5px dashed var(--line);background:var(--soft) url("img/iso.png") center 40%/22% no-repeat}
+.foto-big.ph span{margin-top:90px}
+.results button > span.row{min-width:0}
+.prow .name{overflow-wrap:break-word;word-break:normal}
+.prow .prices{flex:none}

@@ -45,6 +45,37 @@ const serie = id => SERIES.find(s => s.id === id) || SERIES[SERIES.length - 1];
 const serStyle = id => { const s = serie(id); return `--sc:${s.sc};--si:${s.si}`; };
 const safeUrl = u => /^https?:\/\//i.test(String(u || "").trim()) ? String(u).trim() : "";
 
+/* Fotos de productos: bucket público "fotos" en Supabase Storage, una carpeta por usuario */
+const fotoUrl = p => p && p.foto ? window.BLU_CONFIG.supabaseUrl + "/storage/v1/object/public/fotos/" + p.foto : "";
+const prodDe = codigo => codigo == null ? null : S.productos.find(x => x.codigo === codigo);
+const thumb = (p, cls = "") => { const u = fotoUrl(p); return u ? `<img class="thumb ${cls}" src="${esc(u)}" alt="" loading="lazy" decoding="async">` : `<span class="thumb ph ${cls}" aria-hidden="true"></span>`; };
+async function comprimirFoto(file) {
+  const bmp = await createImageBitmap(file).catch(() => null);
+  let w, h, src;
+  if (bmp) { w = bmp.width; h = bmp.height; src = bmp; }
+  else { src = await new Promise((ok, mal) => { const i = new Image(); i.onload = () => ok(i); i.onerror = mal; i.src = URL.createObjectURL(file); }); w = src.naturalWidth; h = src.naturalHeight; }
+  const k = Math.min(1, 900 / Math.max(w, h)), c = document.createElement("canvas");
+  c.width = Math.round(w * k); c.height = Math.round(h * k);
+  c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
+  return new Promise(ok => c.toBlob(ok, "image/jpeg", 0.82));
+}
+async function subirFoto(p, file) {
+  toast("Subiendo foto…");
+  try {
+    const blob = await comprimirFoto(file);
+    const path = uid + "/" + p.codigo + "-" + Date.now() + ".jpg";
+    const { error } = await sb.storage.from("fotos").upload(path, blob, { contentType: "image/jpeg", cacheControl: "31536000", upsert: false });
+    if (error) throw error;
+    const vieja = p.foto; p.foto = path;
+    if (vieja) sb.storage.from("fotos").remove([vieja]).catch(() => {});
+    return true;
+  } catch (e) {
+    console.error(e);
+    toast(/bucket/i.test(String(e && e.message)) ? "Falta crear el espacio de fotos en Supabase" : "No se pudo subir la foto. Revisa tu conexión");
+    return false;
+  }
+}
+
 function costoProd(p) { return (p.hilo || 0) + (p.dije || 0) + (p.mostacillas || 0) + (p.compra || 0) + (p.manoObra || 0) + (p.empaque || 0); }
 const remo = p => p.remodelacion || "pendiente";
 const activos = () => S.productos.filter(p => remo(p) !== "archivado");
@@ -233,7 +264,7 @@ function orderCard(p, opts = {}) {
       <span class="pill ${etClase(etapa(p))}">${etLabel(etapa(p))}</span>
     </div>
     ${opts.track && p.estado !== "perdido" ? `<div class="track" aria-hidden="true">${ESTADOS.map((e, k) => `<i class="${k <= i ? "on" : ""}"></i>`).join("")}</div>` : ""}
-    <div class="items">${p.lineas.map(l => `<div class="it"><div class="it-main"><span class="qty">${l.cantidad}</span><div class="grow"><b>${esc(l.nombre)}</b><div class="muted small">${esc(l.tipo)}${l.cantidad > 1 ? " · " + $(l.precio) + " c/u" : ""}${l.nota ? " · " + esc(l.nota) : ""}</div>${l.tarjeta ? '<span class="tag card-tag">💌 Tarjeta personalizada</span>' : ""}</div></div><span class="num">${$(l.cantidad * l.precio)}</span></div>`).join("")}
+    <div class="items">${p.lineas.map(l => `<div class="it"><div class="it-main">${thumb(prodDe(l.codigo), "sm")}<span class="qty">${l.cantidad}</span><div class="grow"><b>${esc(l.nombre)}</b><div class="muted small">${esc(l.tipo)}${l.cantidad > 1 ? " · " + $(l.precio) + " c/u" : ""}${l.nota ? " · " + esc(l.nota) : ""}</div>${l.tarjeta ? '<span class="tag card-tag">💌 Tarjeta personalizada</span>' : ""}</div></div><span class="num">${$(l.cantidad * l.precio)}</span></div>`).join("")}
       ${p.envio || modoEnvio(p) === "contraentrega" ? `<div class="muted"><span>Envío ${modoEnvio(p) === "contraentrega" ? "contraentrega · lo paga al recibir" : modoEnvio(p) === "blu" ? "· lo pagó Blu" : "contado"}</span><span class="num">${p.envio ? $(p.envio) : "—"}</span></div>` : ""}</div>
     <div class="row between wrap">
       <div class="row wrap" style="gap:6px">${pagoDe(p) !== "pagado" && p.estado !== "pendiente" ? `<span class="pill pg-${pagoDe(p)}">${PAGO_LABEL[pagoDe(p)]}</span>` : ""}${p.precioTipo === "mayor" ? '<span class="pill wa-mayorista">Cliente mayorista</span>' : ""}${p.importado ? '<span class="tag">Del Excel</span>' : ""}</div>
@@ -337,7 +368,7 @@ function vStock() {
   <div class="scroller"><button class="chip" type="button" data-action="stock-tipo" data-v="" aria-pressed="${!ui.stockTipo}">Todos</button>${TIPOS.map(t => `<button class="chip" type="button" data-action="stock-tipo" data-v="${t}" aria-pressed="${ui.stockTipo === t}">${t}</button>`).join("")}</div>
   <p class="muted small" style="margin:0">${unid} unidades en stock · ${lista.length} productos</p>
   <section class="card" style="padding-block:4px">${lista.map(p => `<div class="prow">
-    <div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)}${p.stock <= 0 ? " · Agotado" : ""}</div></div>
+    ${thumb(p)}<div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)}${p.stock <= 0 ? " · Agotado" : ""}</div></div>
     <div class="stepper"><button class="icon-btn" type="button" data-action="stock" data-c="${p.codigo}" data-d="-1" aria-label="Restar uno a ${esc(p.nombre)}">−</button>
     <b class="${p.stock <= 0 ? "zero" : ""}">${p.stock}</b>
     <button class="icon-btn" type="button" data-action="stock" data-c="${p.codigo}" data-d="1" aria-label="Sumar uno a ${esc(p.nombre)}">+</button></div></div>`).join("") || '<div class="empty">No hay productos con ese filtro</div>'}</section>`;
@@ -352,7 +383,7 @@ function vCatalogo() {
     const perd = activos().filter(p => p.mayor - costoProd(p) < 0).length;
     body = `${perd ? `<div class="warn">${perd} producto${perd > 1 ? "s" : ""} te dan pérdida al por mayor. Están marcados en rojo.</div>` : ""}
     <section class="card" style="padding-block:4px">${lista.map(p => { const c = costoProd(p), gm = p.mayor - c; return `<div class="prow tappable" data-action="edit-prod" data-c="${p.codigo}" role="button" tabindex="0">
-      <div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)} · #${p.codigo}</div>
+      ${thumb(p)}<div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)} · #${p.codigo}</div>
       ${gm < 0 ? `<span class="tag loss">Pérdida al por mayor ${$(gm)}</span>` : ""}${!p.menor ? `<span class="tag loss">Sin precio</span>` : ""}</div>
       <div class="prices"><span>Costo</span><span>Mayor</span><span>Detal</span><b>${$(c)}</b><b>${$(p.mayor)}</b><b>${$(p.menor)}</b></div></div>`; }).join("") || '<div class="empty">Sin resultados</div>'}</section>`;
   } else if (seg === "materia") {
@@ -371,7 +402,7 @@ function vCatalogo() {
     <div class="scroller">${Object.keys(REMO).map(k => `<button class="chip" type="button" data-action="rem-filtro" data-v="${k}" aria-pressed="${ui.remFiltro === k}">${REMO[k]} (${cnt(k)})</button>`).join("")}</div>
     ${ui.remFiltro === "archivado" ? `<p class="note" style="margin:0">Los archivados no salen en inventario, catálogo ni pedidos nuevos. Sus ventas viejas se conservan. Puedes recuperarlos cuando quieras.</p>` : ""}
     <section class="card" style="padding-block:2px">${lista.map(p => { const r = remo(p), v = S.contenido.filter(c => c.productoCodigo === p.codigo).length; return `<div class="rmrow">
-      <div class="row between" style="align-items:flex-start"><div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)} · #${p.codigo}${v ? ` · ${v} video${v > 1 ? "s" : ""}` : ""}</div></div>
+      <div class="row between" style="align-items:flex-start">${thumb(p, "lg")}<div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)} · #${p.codigo}${v ? ` · ${v} video${v > 1 ? "s" : ""}` : ""}</div></div>
       ${r !== "archivado" ? `<button class="btn sm ghost" type="button" data-action="video-prod" data-c="${p.codigo}">Crear video</button>` : ""}</div>
       <div class="rm-st" role="group" aria-label="Estado de ${esc(p.nombre)}">
         <button type="button" data-action="remo" data-c="${p.codigo}" data-v="pendiente" aria-pressed="${r === "pendiente"}">Pendiente</button>
@@ -477,10 +508,10 @@ function drawOrderForm(focusId) {
     <button type="button" data-action="ptipo" data-v="mayor" aria-pressed="${d.precioTipo === "mayor"}">Por mayor</button></div></div>
   <div class="field"><label for="f_q">Productos</label>
     <input id="f_q" class="search" data-f="q" value="${esc(d.q)}" placeholder="Buscar para agregar" autocomplete="off">
-    ${res.length ? `<div class="results">${res.map(p => `<button type="button" data-action="add-line" data-c="${p.codigo}"><span><b>${esc(p.nombre)}</b> <span class="muted small">${esc(p.tipo)}</span></span><span class="small ${p.stock > 0 ? "" : "muted"}">${p.stock > 0 ? p.stock + " en stock" : "Agotado"}</span></button>`).join("")}</div>` : (q ? '<span class="muted small">Sin resultados</span>' : "")}
+    ${res.length ? `<div class="results">${res.map(p => `<button type="button" data-action="add-line" data-c="${p.codigo}"><span class="row" style="gap:10px">${thumb(p, "sm")}<span><b>${esc(p.nombre)}</b> <span class="muted small">${esc(p.tipo)}</span></span></span><span class="small ${p.stock > 0 ? "" : "muted"}">${p.stock > 0 ? p.stock + " en stock" : "Agotado"}</span></button>`).join("")}</div>` : (q ? '<span class="muted small">Sin resultados</span>' : "")}
   </div>
   ${d.lineas.length ? `<div class="list">${d.lineas.map((l, i) => `<div class="line-item">
-    <div><b>${esc(l.nombre)}</b><div class="muted small">${esc(l.tipo)}${l.nota ? " · " + esc(l.nota) : ""}</div></div>
+    <div class="row" style="gap:10px;align-items:flex-start">${thumb(prodDe(l.codigo))}<div><b>${esc(l.nombre)}</b><div class="muted small">${esc(l.tipo)}${l.nota ? " · " + esc(l.nota) : ""}</div></div></div>
     <button class="icon-btn" type="button" data-action="del-line" data-i="${i}" aria-label="Quitar ${esc(l.nombre)}">×</button>
     <div class="ctl"><span class="lbl">Cantidad</span><div class="stepper"><button class="icon-btn" type="button" data-action="qty" data-i="${i}" data-d="-1" aria-label="Menos">−</button><b>${l.cantidad}</b><button class="icon-btn" type="button" data-action="qty" data-i="${i}" data-d="1" aria-label="Más">+</button></div>
     <span class="muted small" style="margin-left:auto">c/u</span><input id="lp_${i}" inputmode="numeric" data-lp="${i}" value="${l.precio}" aria-label="Precio por unidad de ${esc(l.nombre)}"></div>
@@ -656,6 +687,7 @@ function editProd(codigo) {
   const p = nuevo ? { codigo: Math.max(100, ...S.productos.map(x => x.codigo)) + 1, nombre: "", tipo: TIPOS[1], hilo: 0, dije: 0, mostacillas: 0, compra: 0, manoObra: 0, empaque: 2815, mayor: 0, menor: 0, stock: 0, remodelacion: "pendiente" } : { ...S.productos.find(x => x.codigo === codigo) };
   const f = (k, l) => `<div class="field"><label for="pp_${k}">${l}</label><input id="pp_${k}" inputmode="numeric" data-pp="${k}" value="${p[k] || ""}" placeholder="0"></div>`;
   openSheet(nuevo ? "Nuevo producto" : "Editar producto", `
+    <div class="foto-edit" id="ppFoto"></div>
     <div class="field"><label for="pp_nombre">Nombre</label><input id="pp_nombre" data-pp="nombre" value="${esc(p.nombre)}"></div>
     <div class="grid2"><div class="field"><label for="pp_tipo">Tipo</label><select id="pp_tipo" data-pp="tipo">${TIPOS.map(t => `<option ${t === p.tipo ? "selected" : ""}>${t}</option>`).join("")}</select></div>${f("stock", "Stock")}</div>
     <h3>Costos</h3>
@@ -663,7 +695,14 @@ function editProd(codigo) {
     <h3>Precios</h3>
     <div class="grid2">${f("mayor", "Por mayor")}${f("menor", "Detal")}</div>
     <div class="totals" id="ppTot"></div>
-    <button class="btn block" type="button" data-action="save-prod">Guardar producto</button>`, () => { editing = p; drawProdTot(); });
+    <button class="btn block" type="button" data-action="save-prod">Guardar producto</button>`, () => { editing = p; drawProdTot(); drawProdFoto(); });
+}
+function drawProdFoto() {
+  const el = $id("ppFoto"); if (!el || !editing) return;
+  const u = fotoUrl(editing);
+  el.innerHTML = `${u ? `<img class="foto-big" src="${esc(u)}" alt="Foto de ${esc(editing.nombre)}">` : `<div class="foto-big ph"><span>Sin foto</span></div>`}
+    <div class="row" style="gap:8px"><label class="btn ${u ? "ghost" : ""} grow filebtn">${u ? "Cambiar foto" : "Agregar foto"}<input type="file" id="ppFotoIn" accept="image/*"></label>
+    ${u ? `<button class="btn ghost" type="button" data-action="quitar-foto">Quitar</button>` : ""}</div>`;
 }
 function drawProdTot() {
   const p = editing, c = costoProd(p), el = $id("ppTot"); if (!el) return;
@@ -840,6 +879,8 @@ document.addEventListener("click", e => {
       editContent(null, { serie: "rebranding", titulo: "Acompáñame a pasar de esto a esto: " + p.nombre, productoCodigo: p.codigo, capitulo: String(Math.max(0, ...caps) + 1) }); break; }
     case "edit-prod": editProd(+t.dataset.c); break;
     case "new-prod": editProd(null); break;
+    case "quitar-foto": { const p = editing, vieja = p.foto; p.foto = ""; const real = S.productos.find(x => x.codigo === p.codigo);
+      if (real) { real.foto = ""; guardar("productos", real); render(); } if (vieja) sb.storage.from("fotos").remove([vieja]).catch(() => {}); drawProdFoto(); break; }
     case "save-prod": { const p = editing; if (!p.nombre.trim()) { toast("Ponle nombre al producto"); return; }
       const i = S.productos.findIndex(x => x.codigo === p.codigo); if (i >= 0) S.productos[i] = p; else S.productos.push(p);
       guardar("productos", p); closeSheet(); render(); toast("Producto guardado"); break; }
@@ -892,6 +933,10 @@ document.addEventListener("change", e => {
   if (t.dataset.pp && editing) { editing[t.dataset.pp] = t.value; drawProdTot(); }
   if (t.dataset.cc && editingC) editingC[t.dataset.cc] = t.value;
   if (t.id === "fileImport" && t.files && t.files[0]) importar(t.files[0]);
+  if (t.id === "ppFotoIn" && t.files && t.files[0] && editing) { const p = editing; subirFoto(p, t.files[0]).then(ok => {
+    if (!ok) return; const real = S.productos.find(x => x.codigo === p.codigo);
+    if (real) { real.foto = p.foto; guardar("productos", real); render(); }
+    if (editing === p) drawProdFoto(); toast("Foto guardada"); }); }
 });
 
 /* ---------- Actualizaciones: el iPhone guarda la app; si hay versión nueva, se recarga sola ---------- */
