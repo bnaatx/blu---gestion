@@ -41,19 +41,19 @@ h3{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
 /* Estados */
 .pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 10px;border-radius:99px;white-space:nowrap}
 .pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
-/* Estados con los colores de las etiquetas de WhatsApp Business */
-.st-pendiente{background:#8ECBA8;color:#0F3B22}
-.pg-abono{background:#6A2C80;color:#FFFFFF}
-.pg-pendiente{background:#E8B54A;color:#3D2A04}
-.st-empacado{background:#8FA552;color:#FFFFFF}
-.st-enviado{background:#C3A0CC;color:#3A1C44}
-.st-entregado{background:#5BC0D8;color:#08343F}
-.wa-mayorista{background:#EE8E8E;color:#4E1010}
-.st-perdido{background:#6E2433;color:#FFFFFF}
+/* Estados con los colores exactos de las etiquetas de WhatsApp Business de Blu, letra blanca */
+.st-pendiente{background:#8DCAA8;color:#FFFFFF}
+.pg-abono{background:#652A79;color:#FFFFFF}
+.pg-pendiente{background:#E7B54D;color:#FFFFFF}
+.st-empacado{background:#94A74F;color:#FFFFFF}
+.st-enviado{background:#C09FC9;color:#FFFFFF}
+.st-entregado{background:#5FC1D8;color:#FFFFFF}
+.wa-mayorista{background:#EF908F;color:#FFFFFF}
+.st-perdido{background:#6E2738;color:#FFFFFF}
 .chip.wa-chip[aria-pressed="false"]{background:var(--white);color:var(--ink)}
 .chip.wa-chip[aria-pressed="false"]::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;background:var(--dot,transparent)}
-.chip.wa-chip.st-pendiente{--dot:#8ECBA8}.chip.wa-chip.pg-abono{--dot:#6A2C80}.chip.wa-chip.pg-pendiente{--dot:#E8B54A}.chip.wa-chip.st-empacado{--dot:#8FA552}
-.chip.wa-chip.st-enviado{--dot:#C3A0CC}.chip.wa-chip.st-entregado{--dot:#5BC0D8}.chip.wa-chip.wa-mayorista{--dot:#EE8E8E}.chip.wa-chip.st-perdido{--dot:#6E2433}
+.chip.wa-chip.st-pendiente{--dot:#8DCAA8}.chip.wa-chip.pg-abono{--dot:#652A79}.chip.wa-chip.pg-pendiente{--dot:#E7B54D}.chip.wa-chip.st-empacado{--dot:#94A74F}
+.chip.wa-chip.st-enviado{--dot:#C09FC9}.chip.wa-chip.st-entregado{--dot:#5FC1D8}.chip.wa-chip.wa-mayorista{--dot:#EF908F}.chip.wa-chip.st-perdido{--dot:#6E2738}
 .chip.wa-chip[aria-pressed="true"]:not([class*="st-"]):not([class*="pg-"]):not(.wa-mayorista){background:var(--pink);color:var(--white)}
 .chip.wa-chip[aria-pressed="true"]{border-color:transparent}
 .chip.wa-chip b{font-variant-numeric:tabular-nums;margin-left:4px;opacity:.75}
@@ -209,3 +209,6 @@ nav.tabs button[aria-current="page"]{color:var(--pink);font-weight:600}
 .filebtn{position:relative;overflow:hidden}
 .filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
 nav.tabs button{font-size:10.5px}
+
+.pill.st-pendiente,.pill.pg-abono,.pill.pg-pendiente,.pill.st-empacado,.pill.st-enviado,.pill.st-entregado,.pill.wa-mayorista,.pill.st-perdido,.state{text-shadow:0 1px 1px rgba(0,0,0,.18)}
+.state.st-pendiente,.state.st-empacado,.state.st-enviado,.state.st-entregado{color:#FFFFFF}
