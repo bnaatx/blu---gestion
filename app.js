@@ -213,7 +213,7 @@ function orderCard(p, opts = {}) {
       <span class="pill st-${p.estado}">${EST_LABEL[p.estado]}</span>
     </div>
     ${opts.track && p.estado !== "perdido" ? `<div class="track" aria-hidden="true">${ESTADOS.map((e, k) => `<i class="${k <= i ? "on" : ""}"></i>`).join("")}</div>` : ""}
-    <div class="items">${p.lineas.map(l => `<div><span>${l.cantidad} × ${esc(l.nombre)} <span class="muted">${esc(l.tipo)}</span></span><span class="num">${$(l.cantidad * l.precio)}</span></div>`).join("")}
+    <div class="items">${p.lineas.map(l => `<div class="it"><div class="it-main"><span class="qty">${l.cantidad}</span><div class="grow"><b>${esc(l.nombre)}</b><div class="muted small">${esc(l.tipo)}${l.cantidad > 1 ? " · " + $(l.precio) + " c/u" : ""}${l.nota ? " · " + esc(l.nota) : ""}</div>${l.tarjeta ? '<span class="tag card-tag">💌 Tarjeta personalizada</span>' : ""}</div></div><span class="num">${$(l.cantidad * l.precio)}</span></div>`).join("")}
       ${p.envio ? `<div class="muted"><span>Envío · paga ${p.envioPaga === "yo" ? "Blu" : "el cliente"}</span><span class="num">${$(p.envio)}</span></div>` : ""}</div>
     <div class="row between wrap">
       <div class="row wrap" style="gap:6px">${pagoDe(p) !== "pagado" ? `<span class="pill pg-${pagoDe(p)}">${PAGO_LABEL[pagoDe(p)]}</span>` : ""}${p.precioTipo === "mayor" ? '<span class="pill wa-mayorista">Cliente mayorista</span>' : ""}${p.importado ? '<span class="tag">Del Excel</span>' : ""}</div>
@@ -458,10 +458,11 @@ function drawOrderForm(focusId) {
     ${res.length ? `<div class="results">${res.map(p => `<button type="button" data-action="add-line" data-c="${p.codigo}"><span><b>${esc(p.nombre)}</b> <span class="muted small">${esc(p.tipo)}</span></span><span class="small ${p.stock > 0 ? "" : "muted"}">${p.stock > 0 ? p.stock + " en stock" : "Agotado"}</span></button>`).join("")}</div>` : (q ? '<span class="muted small">Sin resultados</span>' : "")}
   </div>
   ${d.lineas.length ? `<div class="list">${d.lineas.map((l, i) => `<div class="line-item">
-    <div><b>${esc(l.nombre)}</b><div class="muted small">${esc(l.tipo)}</div></div>
+    <div><b>${esc(l.nombre)}</b><div class="muted small">${esc(l.tipo)}${l.nota ? " · " + esc(l.nota) : ""}</div></div>
     <button class="icon-btn" type="button" data-action="del-line" data-i="${i}" aria-label="Quitar ${esc(l.nombre)}">×</button>
-    <div class="ctl"><div class="stepper"><button class="icon-btn" type="button" data-action="qty" data-i="${i}" data-d="-1" aria-label="Menos">−</button><b>${l.cantidad}</b><button class="icon-btn" type="button" data-action="qty" data-i="${i}" data-d="1" aria-label="Más">+</button></div>
-    <span class="muted small" style="margin-left:auto">c/u</span><input id="lp_${i}" inputmode="numeric" data-lp="${i}" value="${l.precio}" aria-label="Precio por unidad de ${esc(l.nombre)}"></div></div>`).join("")}</div>` : ""}
+    <div class="ctl"><span class="lbl">Cantidad</span><div class="stepper"><button class="icon-btn" type="button" data-action="qty" data-i="${i}" data-d="-1" aria-label="Menos">−</button><b>${l.cantidad}</b><button class="icon-btn" type="button" data-action="qty" data-i="${i}" data-d="1" aria-label="Más">+</button></div>
+    <span class="muted small" style="margin-left:auto">c/u</span><input id="lp_${i}" inputmode="numeric" data-lp="${i}" value="${l.precio}" aria-label="Precio por unidad de ${esc(l.nombre)}"></div>
+    <div class="ctl"><span class="lbl">Tarjeta personalizada</span><div class="seg mini" role="group" aria-label="Tarjeta personalizada para ${esc(l.nombre)}" style="margin-left:auto"><button type="button" data-action="tarjeta" data-i="${i}" data-v="1" aria-pressed="${!!l.tarjeta}">Sí</button><button type="button" data-action="tarjeta" data-i="${i}" data-v="0" aria-pressed="${!l.tarjeta}">No</button></div></div></div>`).join("")}</div>` : ""}
   ${faltan.length ? `<div class="warn">No alcanza el stock de: ${faltan.map(l => esc(l.nombre)).join(", ")}. Puedes guardarlo igual; el inventario quedará en negativo hasta que las fabriques.</div>` : ""}
   <div class="grid2"><div class="field"><label for="f_envio">Valor envío</label><input id="f_envio" inputmode="numeric" data-f="envio" value="${d.envio || ""}" placeholder="0"></div>
     <div class="field"><span class="lbl">¿Quién paga el envío?</span><div class="seg"><button type="button" data-action="paga" data-v="cliente" aria-pressed="${d.envioPaga === "cliente"}">Cliente</button><button type="button" data-action="paga" data-v="yo" aria-pressed="${d.envioPaga === "yo"}">Blu</button></div></div></div>
@@ -545,19 +546,24 @@ function buscarProducto(texto) {
 }
 function leerFactura(texto) {
   const res = { lineas: [], abono: 0, envio: 0, pagado: false };
-  String(texto || "").split("\n").map(l => l.replace(/^[\s•\-–*·>✨💗💖❤️🩷]+/u, "").trim()).filter(Boolean).forEach(l => {
+  String(texto || "").replace(/[\u200B-\u200F\u2060\uFEFF*_~]/g, "").split("\n").map(l => l.replace(/^[\s•\-–·>✨💗💖❤️🩷]+/u, "").trim()).filter(Boolean).forEach(l => {
     const n = norm(l);
     if (/^total|saldo/.test(n.replace(/[^a-z ]/g, "").trim())) return;
     if (/abono/.test(n)) { res.abono = plata(l.split(":").pop()); return; }
     if (/env[ií]o|domicilio|flete/.test(n) && /\d/.test(l)) { res.envio = plata(l.split(":").pop()); return; }
     if (/pag[oó] (completo|total)|ya pag/.test(n)) { res.pagado = true; return; }
+    let nota = "";
+    const np = l.match(/^(.*?\d[\d.,]*)\s*[(\[]([^)\]]*)[)\]]\s*$/);
+    if (np) { l = np[1]; nota = np[2].trim(); }
     let m = l.match(/^\(?\s*(\d+)\s*\)?\s*(?:x|×|und\.?|unid\.?|uds?\.?)?\s+(.+?)\s*[:=\-–]\s*\$?\s*([\d.,]+)\s*$/i)
       || l.match(/^(.+?)\s*(?:x|×)\s*(\d+)\s*[:=\-–]\s*\$?\s*([\d.,]+)\s*$/i);
     if (!m) return;
     let cant, nombre, total;
     if (/^\(?\s*\d/.test(l)) { cant = +m[1]; nombre = m[2]; total = plata(m[3]); } else { nombre = m[1]; cant = +m[2]; total = plata(m[3]); }
     if (!cant || !total || !nombre) return;
-    res.lineas.push({ texto: nombre.trim(), cantidad: cant, total });
+    const tarjeta = /tarjeta/i.test(nota + " " + nombre);
+    nombre = nombre.replace(/\s*[(\[][^)\]]*tarjeta[^)\]]*[)\]]/i, "").trim();
+    res.lineas.push({ texto: nombre, cantidad: cant, total, tarjeta, nota: tarjeta ? "" : nota });
   });
   return res;
 }
@@ -571,10 +577,10 @@ function aplicarOrganizado() {
     const p = buscarProducto(x.texto), precio = Math.round(x.total / x.cantidad);
     if (p) {
       const ex = draft.lineas.find(l => l.codigo === p.codigo);
-      if (ex) { ex.cantidad = x.cantidad; ex.precio = precio; }
-      else draft.lineas.push({ codigo: p.codigo, nombre: p.nombre, tipo: p.tipo, cantidad: x.cantidad, precio, costo: costoProd(p) });
+      if (ex) { ex.cantidad = x.cantidad; ex.precio = precio; ex.tarjeta = x.tarjeta; ex.nota = x.nota; }
+      else draft.lineas.push({ codigo: p.codigo, nombre: p.nombre, tipo: p.tipo, cantidad: x.cantidad, precio, costo: costoProd(p), tarjeta: x.tarjeta, nota: x.nota });
       if (precio === p.mayor && p.mayor !== p.menor) draft.precioTipo = "mayor";
-    } else { sinMatch.push(x.texto); draft.lineas.push({ codigo: null, nombre: x.texto, tipo: "No está en el catálogo", cantidad: x.cantidad, precio, costo: 0 }); }
+    } else { sinMatch.push(x.texto); draft.lineas.push({ codigo: null, nombre: x.texto, tipo: "No está en el catálogo", cantidad: x.cantidad, precio, costo: 0, tarjeta: x.tarjeta, nota: x.nota }); }
   });
   if (f.envio) { draft.envio = f.envio; draft.envioPaga = "cliente"; }
   if (f.abono) { draft.pago = "abono"; draft.abono = f.abono; } else if (f.pagado) draft.pago = "pagado";
@@ -694,7 +700,14 @@ async function entregarArchivo(blob, filename) {
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = filename;
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
 }
-function descargarExcel() {
+let xlsxCargado = null;
+function cargarXLSX() {
+  if (window.XLSX) return Promise.resolve();
+  return xlsxCargado || (xlsxCargado = new Promise((ok, mal) => { const s = document.createElement("script"); s.src = "vendor/xlsx.full.min.js?v=" + (window.BLU_VERSION || ""); s.onload = ok; s.onerror = () => { xlsxCargado = null; mal(); }; document.head.appendChild(s); }));
+}
+async function descargarExcel() {
+  toast("Armando el Excel…");
+  try { await cargarXLSX(); } catch (e) { toast("No se pudo armar el Excel. Revisa tu conexión"); return; }
   const fila = (p, l) => ({ "N° pedido": p.n, "Fecha": p.fecha, "Estado": EST_LABEL[p.estado], "Cliente": p.cliente, "Cédula": p.cc, "Celular": p.celular, "Ciudad": p.ciudad, "Dirección": p.direccion,
     "Producto": l.nombre, "Tipo": l.tipo, "Cantidad": l.cantidad, "Precio unitario": l.precio, "Subtotal": l.cantidad * l.precio, "Costo": l.cantidad * (l.costo || 0),
     "Envío": p.envio, "Paga envío": p.envioPaga === "yo" ? "Blu" : "Cliente", "Pago": PAGO_LABEL[pagoDe(p)], "Abono": p.abono || 0, "Saldo": saldo(p), "Precio": p.precioTipo === "mayor" ? "Por mayor" : "Detal" });
@@ -753,6 +766,7 @@ document.addEventListener("click", e => {
       if (ex) ex.cantidad++; else draft.lineas.push({ codigo: p.codigo, nombre: p.nombre, tipo: p.tipo, cantidad: 1, precio: priceFor(p, draft.precioTipo), costo: costoProd(p) });
       draft.q = ""; drawOrderForm(); break; }
     case "del-line": draft.lineas.splice(+t.dataset.i, 1); drawOrderForm(); break;
+    case "tarjeta": draft.lineas[+t.dataset.i].tarjeta = v === "1"; drawOrderForm(); break;
     case "qty": { const l = draft.lineas[+t.dataset.i]; l.cantidad = Math.max(1, l.cantidad + (+t.dataset.d)); drawOrderForm(); break; }
     case "save-order": saveOrder(); break;
     case "organizar": aplicarOrganizado(); break;
@@ -780,7 +794,8 @@ document.addEventListener("click", e => {
     case "cancel-yes": { const i = S.pedidos.findIndex(x => x.id === t.dataset.id), p = S.pedidos[i];
       if (!p.importado && p.estado !== "entregado") p.lineas.forEach(l => { const pr = S.productos.find(x => x.codigo === l.codigo); if (pr) { pr.stock += l.cantidad; guardar("productos", pr); } });
       S.pedidos.splice(i, 1); borrar("pedidos", p.id); closeSheet(); render(); toast(p.estado === "entregado" ? "Venta borrada" : "Pedido cancelado"); break; }
-    case "stock": { const p = prodC(); p.stock = Math.max(0, p.stock + (+t.dataset.d)); guardar("productos", p); render(); break; }
+    case "stock": { const p = prodC(); p.stock = Math.max(0, p.stock + (+t.dataset.d)); guardar("productos", p);
+      const b = t.parentElement.querySelector("b"); if (b) { b.textContent = p.stock; b.classList.toggle("zero", p.stock <= 0); } else render(); break; }
     case "stock-tipo": ui.stockTipo = v; render(); break;
     case "seg": ui.catSeg = v; ui.catQ = ""; render(); break;
     case "rem-filtro": ui.remFiltro = v; render(); break;
@@ -822,7 +837,7 @@ document.addEventListener("keydown", e => {
 });
 document.addEventListener("input", e => {
   const t = e.target;
-  if (t.dataset.input) { ui[t.dataset.input] = t.value; render(); const el = $id(t.id); el.focus(); el.setSelectionRange(el.value.length, el.value.length); return; }
+  if (t.dataset.input) { ui[t.dataset.input] = t.value; clearTimeout(window._bt); const id = t.id; window._bt = setTimeout(() => { render(); const el = $id(id); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 180); return; }
   if (t.dataset.f && draft) { const k = t.dataset.f; draft[k] = (k === "envio" || k === "abono") ? num(t.value) : t.value; if (k === "q" || k === "envio" || k === "abono") drawOrderForm(t.id); return; }
   if (t.dataset.lp && draft) { draft.lineas[+t.dataset.lp].precio = num(t.value); drawOrderForm(t.id); return; }
   if (t.dataset.pp && editing) { const k = t.dataset.pp; editing[k] = (k === "nombre" || k === "tipo") ? t.value : (k === "stock" ? (parseInt(t.value, 10) || 0) : num(t.value)); drawProdTot(); return; }
