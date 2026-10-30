@@ -370,6 +370,11 @@ function drawOrderForm(focusId) {
   const res = q ? activos().filter(p => norm(p.nombre).includes(q) || norm(p.tipo).includes(q)).slice(0, 8) : [];
   const faltan = d.lineas.filter(l => { const p = S.productos.find(x => x.codigo === l.codigo); return p && l.cantidad > p.stock; });
   box.innerHTML = `
+  <div class="card" style="display:flex;flex-direction:column;gap:10px;background:var(--soft);border-color:transparent">
+    <div class="field"><label for="f_pegado">Pegar datos del cliente</label>
+      <textarea id="f_pegado" data-f="pegado" rows="4" placeholder="Pega aquí el mensaje de WhatsApp con nombre, ciudad, dirección, celular y cédula">${esc(d.pegado || "")}</textarea></div>
+    <div class="row" style="gap:8px"><button class="btn grow" type="button" data-action="organizar">Organizar datos</button>${navigator.clipboard && navigator.clipboard.readText ? `<button class="btn ghost" type="button" data-action="pegar">Pegar</button>` : ""}</div>
+  </div>
   <div class="grid2"><div class="field"><label for="f_fecha">Fecha</label><input id="f_fecha" type="date" data-f="fecha" value="${d.fecha}"></div>
     <div class="field"><label for="f_cc">Cédula</label><input id="f_cc" inputmode="numeric" data-f="cc" value="${esc(d.cc)}"></div></div>
   <div class="field"><label for="f_cliente">Cliente</label><input id="f_cliente" data-f="cliente" value="${esc(d.cliente)}" placeholder="Nombre y apellido" autocomplete="off"></div>
@@ -400,13 +405,67 @@ function drawOrderForm(focusId) {
   <button class="btn block" type="button" data-action="save-order">Guardar pedido</button>`;
   if (focusId) { const el = $id(focusId); if (el) { el.focus(); const v = el.value; try { el.setSelectionRange(v.length, v.length); } catch (e) { } } }
 }
+/* Organiza el mensaje que manda el cliente por WhatsApp (nombre, ciudad, dirección, celular, cédula) */
+const CIUDADES = ["bogota", "medellin", "cali", "barranquilla", "cartagena", "bucaramanga", "pereira", "manizales", "ibague", "neiva", "villavicencio", "pasto", "santa marta", "cucuta", "armenia", "tunja", "popayan", "monteria", "sincelejo", "valledupar", "palmira", "soacha", "facatativa", "zipaquira", "chia", "sopo", "fusagasuga", "girardot", "mosquera", "madrid", "funza", "cajica", "envigado", "itagui", "bello", "rionegro", "floridablanca", "giron", "piedecuesta", "dosquebradas", "duitama", "sogamoso", "yopal", "florencia", "riohacha", "quibdo", "tulua", "buga", "cartago", "jamundi", "yumbo", "la calera", "tocancipa", "tenjo", "cota", "la mesa", "villeta", "ubate", "honda", "espinal", "melgar", "sabaneta", "la estrella", "caldas", "apartado", "turbo", "barrancabermeja", "ocaña", "pamplona", "san andres", "leticia", "mocoa", "arauca", "san gil", "chiquinquira", "ipiales", "tumaco", "buenaventura", "magangue", "cienaga", "soledad", "malambo", "maicao", "aguachica", "lorica", "cerete", "sahagun", "caucasia", "guarne", "marinilla", "la ceja", "santander de quilichao", "zarzal", "sevilla", "calarca", "la dorada", "chinchina", "puerto boyaca", "garzon", "pitalito", "la plata"];
+const RX_DIR = /^(cra|cr|kra|kr|carrera|calle|cll|cl|clle|av|avda|avenida|ak|ac|diagonal|diag|dg|transversal|transv|trans|tv|tr|mz|manzana|vereda|km|kilometro|conjunto|edificio|torre|apto|apartamento|casa|barrio|urbanizacion|urb|interrapidisimo|punto|oficina)\b/i;
+function organizar(texto) {
+  const out = {}, libres = [];
+  let lineas = String(texto || "").replace(/\r/g, "").split("\n").map(l => l.replace(/^[\s•\-–*·>]+/, "").trim()).filter(Boolean);
+  if (lineas.length === 1) lineas = lineas[0].split(/\s*[,;]\s*/).filter(Boolean);
+  const etiquetas = [
+    [/^(nombre( completo)?|cliente|destinatario)\s*[:\-]\s*/i, "cliente"],
+    [/^(ciudad|municipio)\s*[:\-]\s*/i, "ciudad"],
+    [/^(direcci[oó]n|dir)\s*[:\-]\s*/i, "direccion"],
+    [/^(barrio)\s*[:\-]\s*/i, "barrio"],
+    [/^(cel(ular)?|tel([eé]fono)?|whatsapp|n[uú]mero)\s*[:\-]\s*/i, "celular"],
+    [/^(c[eé]dula|cc|c\.c\.?|documento|doc|identificaci[oó]n|nit)\s*[:\-.]?\s*/i, "cc"],
+  ];
+  for (const l of lineas) {
+    const et = etiquetas.find(([rx]) => rx.test(l));
+    if (et) { const v = l.replace(et[0], "").trim(); if (!v) continue;
+      if (et[1] === "barrio") out.barrio = v; else if (et[1] === "celular" || et[1] === "cc") out[et[1]] = v.replace(/[^\d]/g, ""); else out[et[1]] = v; continue; }
+    const dig = l.replace(/[\s.\-()+]/g, "");
+    if (/^\d{6,13}$/.test(dig)) {
+      const n = dig.replace(/^57(?=3\d{9}$)/, "");
+      if (/^3\d{9}$/.test(n) && !out.celular) out.celular = n; else if (!out.cc) out.cc = dig; else if (!out.celular) out.celular = n;
+      continue;
+    }
+    const n = norm(l);
+    if (RX_DIR.test(n) || /#|\bno\.?\s*\d|\d+\s*-\s*\d+/.test(l)) { out.direccion = out.direccion ? out.direccion + ", " + l : l; continue; }
+    if (CIUDADES.includes(n.replace(/[.,]/g, "")) && !out.ciudad) { out.ciudad = l; continue; }
+    libres.push(l);
+  }
+  // Lo que queda: el nombre suele ser lo más largo; la ciudad, lo corto
+  libres.sort((a, b) => b.split(/\s+/).length - a.split(/\s+/).length);
+  for (const l of libres) {
+    const palabras = l.split(/\s+/).length;
+    if (!out.cliente && palabras >= 2 && !/\d/.test(l)) out.cliente = l;
+    else if (!out.ciudad && palabras <= 3 && !/\d/.test(l)) out.ciudad = l;
+    else if (!out.cliente) out.cliente = l;
+    else if (/barrio/i.test(l) || !out.barrio) out.barrio = l;
+  }
+  if (out.barrio && out.direccion && !norm(out.direccion).includes(norm(out.barrio))) out.direccion += ", " + out.barrio;
+  else if (out.barrio && !out.direccion) out.direccion = out.barrio;
+  delete out.barrio;
+  return out;
+}
+function aplicarOrganizado() {
+  const r = organizar(draft.pegado);
+  const campos = ["cliente", "ciudad", "direccion", "celular", "cc"].filter(k => r[k]);
+  if (!campos.length) { toast("No encontré datos en ese mensaje"); return; }
+  campos.forEach(k => draft[k] = r[k]);
+  draftPegadoUsado = true; drawOrderForm();
+  toast("Listo. Revisa que cada dato quedó en su lugar");
+}
+let draftPegadoUsado = false;
+
 function saveOrder() {
   const d = draft, err = $id("formErr"), miss = [];
   if (!d.cliente.trim()) miss.push("el nombre del cliente");
   if (!d.lineas.length) miss.push("al menos un producto");
   if (miss.length) { err.hidden = false; err.textContent = "Falta " + miss.join(" y ") + "."; return; }
   d.lineas.forEach(l => { const p = S.productos.find(x => x.codigo === l.codigo); if (p) { p.stock -= l.cantidad; guardar("productos", p); } });
-  const ped = { ...d, id: "p" + Date.now(), n: nextN(), envio: +d.envio || 0 }; delete ped.q;
+  const ped = { ...d, id: "p" + Date.now(), n: nextN(), envio: +d.envio || 0 }; delete ped.q; delete ped.pegado;
   S.pedidos.push(ped); guardar("pedidos", ped); closeSheet(); ui.pedFiltro = "activos"; go("pedidos"); toast("Pedido #" + ped.n + " guardado · stock descontado");
 }
 function verPedido(id) {
@@ -567,6 +626,9 @@ document.addEventListener("click", e => {
     case "del-line": draft.lineas.splice(+t.dataset.i, 1); drawOrderForm(); break;
     case "qty": { const l = draft.lineas[+t.dataset.i]; l.cantidad = Math.max(1, l.cantidad + (+t.dataset.d)); drawOrderForm(); break; }
     case "save-order": saveOrder(); break;
+    case "organizar": aplicarOrganizado(); break;
+    case "pegar": navigator.clipboard.readText().then(txt => { if (!txt) { toast("No hay nada copiado"); return; } draft.pegado = txt; aplicarOrganizado(); })
+      .catch(() => toast("No se pudo pegar. Mantén presionado el cuadro y toca Pegar")); break;
     case "avanzar": { const p = S.pedidos.find(x => x.id === t.dataset.id); p.estado = ESTADOS[ESTADOS.indexOf(p.estado) + 1]; guardar("pedidos", p); render();
       toast(p.estado === "entregado" ? "Pedido #" + p.n + " entregado · pasó a Ventas" : "Pedido #" + p.n + ": " + EST_LABEL[p.estado].toLowerCase()); break; }
     case "ver": verPedido(t.dataset.id); break;
