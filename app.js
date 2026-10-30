@@ -4,8 +4,12 @@
 
 /* ---------- Constantes ---------- */
 const ESTADOS = ["pendiente", "empacado", "enviado", "entregado"];
-const EST_LABEL = { pendiente: "Pendiente", empacado: "Empacado", enviado: "Enviado", entregado: "Entregado" };
-const NEXT_LABEL = { pendiente: "Marcar empacado", empacado: "Marcar enviado", enviado: "Marcar entregado" };
+const EST_LABEL = { pendiente: "Pedido pendiente", empacado: "Empacado", enviado: "Enviado", entregado: "Entregado", perdido: "Envío perdido" };
+const PAGO_LABEL = { pendiente: "Pago pendiente", abono: "Apartado", pagado: "Pagado" };
+const pagoDe = p => p.pago || (p.pagado ? "pagado" : "pendiente");
+const saldo = p => pagoDe(p) === "pagado" ? 0 : Math.max(0, pedTotal(p) - (pagoDe(p) === "abono" ? (+p.abono || 0) : 0));
+const INV_CATS = ["Mercancía", "Insumos", "Empaques", "Publicidad", "Envíos", "Otros"];
+const NEXT_LABEL = { pendiente: "Marcar empacado", empacado: "Marcar enviado", enviado: "Marcar entregado", perdido: "Marcar reenviado" };
 const TIPOS = ["Pulsera", "Manilla individual", "Manillas parejas", "Manillas trios", "Cadenita individual", "Cadenitas parejas", "Collar individual", "Collares pareja", "Anillos", "Anillos pareja"];
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 const DIAS = ["L", "M", "M", "J", "V", "S", "D"];
@@ -50,10 +54,10 @@ const sb = window.supabase.createClient(window.BLU_CONFIG.supabaseUrl, window.BL
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
 });
 let uid = null, email = "";
-let S = { productos: [], materia: [], pedidos: [], contenido: [] };
+let S = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [] };
 let estado = "cargando"; // cargando | listo | error
-const COLS = ["productos", "materia", "pedidos", "contenido"];
-const ID_OF = { productos: p => String(p.codigo), materia: m => String(m.id), pedidos: p => p.id, contenido: c => c.id };
+const COLS = ["productos", "materia", "pedidos", "contenido", "inversiones"];
+const ID_OF = { productos: p => String(p.codigo), materia: m => String(m.id), pedidos: p => p.id, contenido: c => c.id, inversiones: i => i.id };
 
 async function cargar() {
   const rows = [];
@@ -63,7 +67,7 @@ async function cargar() {
     rows.push(...data);
     if (data.length < 1000) break;
   }
-  const n = { productos: [], materia: [], pedidos: [], contenido: [] };
+  const n = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [] };
   rows.forEach(r => { if (n[r.coleccion]) n[r.coleccion].push(r.data); });
   n.productos.sort((a, b) => a.codigo - b.codigo);
   n.materia.sort((a, b) => a.id - b.id);
@@ -81,7 +85,7 @@ function escribir(key, op) {
   return colas[key];
 }
 function guardar(col, obj) {
-  const id = ID_OF[col](obj), data = JSON.parse(JSON.stringify(obj));
+  const id = ID_OF[col](obj), data = JSON.parse(JSON.stringify(obj, (k, v) => k === "_t" ? undefined : v));
   return escribir(col + "/" + id, () => sb.from("registros").upsert({ user_id: uid, coleccion: col, id, data, actualizado: new Date().toISOString() }));
 }
 function borrar(col, id) {
@@ -118,7 +122,7 @@ document.addEventListener("visibilitychange", async () => {
 /* ---------- Navegación ---------- */
 let tab = "inicio";
 const now = new Date();
-let ui = { pedFiltro: "activos", ventasMes: "", stockQ: "", stockTipo: "", catSeg: "productos", catQ: "", remFiltro: "pendiente",
+let ui = { pedFiltro: "activos", ventasMes: "", ventasSeg: "ventas", ventasEst: "", invMes: "", stockQ: "", stockTipo: "", catSeg: "productos", catQ: "", remFiltro: "pendiente",
   cVista: "calendario", cMes: now.getFullYear() + "-" + pad(now.getMonth() + 1), cDia: "", cSerie: "" };
 const TITLES = { inicio: "Inicio", pedidos: "Pedidos", ventas: "Ventas", stock: "Inventario", catalogo: "Catálogo", contenido: "Contenido" };
 function go(t) { tab = t; render(); window.scrollTo(0, 0); }
@@ -163,6 +167,7 @@ function vInicio() {
     <span class="sub">Ganancia de ${MESES[d.getMonth()]}</span>
     <span class="big">${$(gan)}</span>
     <span class="sub">${mes.length ? `${mes.length} pedido${mes.length > 1 ? "s" : ""} entregado${mes.length > 1 ? "s" : ""} este mes` : "Todavía no hay pedidos entregados este mes"}</span>
+    ${(() => { const inv = S.inversiones.filter(i => i.fecha.startsWith(ym)).reduce((s, i) => s + (+i.valor || 0), 0); return inv ? `<span class="sub">Invertido este mes: <b>${$(inv)}</b></span>` : ""; })()}
     <div class="split"><div>Vendido<b>${$(vendido)}</b></div><div>Costo<b>${$(costo)}</b></div><div>Margen<b>${vendido ? Math.round(gan / vendido * 100) : 0}%</b></div></div>
   </section>
   <section class="card" style="display:flex;flex-direction:column;gap:10px">
@@ -198,12 +203,12 @@ function orderCard(p, opts = {}) {
       <div class="grow"><div class="who">${esc(p.cliente)}</div><div class="muted small">#${p.n} · ${fmtDate(p.fecha)} · ${esc(p.ciudad)}</div></div>
       <span class="pill st-${p.estado}">${EST_LABEL[p.estado]}</span>
     </div>
-    ${opts.track ? `<div class="track" aria-hidden="true">${ESTADOS.map((e, k) => `<i class="${k <= i ? "on" : ""}"></i>`).join("")}</div>` : ""}
+    ${opts.track && p.estado !== "perdido" ? `<div class="track" aria-hidden="true">${ESTADOS.map((e, k) => `<i class="${k <= i ? "on" : ""}"></i>`).join("")}</div>` : ""}
     <div class="items">${p.lineas.map(l => `<div><span>${l.cantidad} × ${esc(l.nombre)} <span class="muted">${esc(l.tipo)}</span></span><span class="num">${$(l.cantidad * l.precio)}</span></div>`).join("")}
       ${p.envio ? `<div class="muted"><span>Envío · paga ${p.envioPaga === "yo" ? "Blu" : "el cliente"}</span><span class="num">${$(p.envio)}</span></div>` : ""}</div>
     <div class="row between wrap">
-      <div class="row wrap" style="gap:6px">${p.importado ? '<span class="tag">Del Excel</span>' : ""}<span class="tag ${p.pagado ? "ok" : "loss"}">${p.pagado ? "Pagado" : "Sin pagar"}</span></div>
-      <span class="money">${$(pedTotal(p))}</span>
+      <div class="row wrap" style="gap:6px">${pagoDe(p) !== "pagado" ? `<span class="pill pg-${pagoDe(p)}">${PAGO_LABEL[pagoDe(p)]}</span>` : ""}${p.precioTipo === "mayor" ? '<span class="pill wa-mayorista">Cliente mayorista</span>' : ""}${p.importado ? '<span class="tag">Del Excel</span>' : ""}</div>
+      <div style="text-align:right"><span class="money">${$(pedTotal(p))}</span>${saldo(p) && saldo(p) < pedTotal(p) ? `<div class="small muted">Abonó ${$(p.abono)} · debe ${$(saldo(p))}</div>` : saldo(p) ? `<div class="small" style="color:var(--loss)">Debe ${$(saldo(p))}</div>` : ""}</div>
     </div>
     ${opts.actions ? `<div class="row" style="gap:8px">
       <button class="btn grow" type="button" data-action="avanzar" data-id="${p.id}">${NEXT_LABEL[p.estado]}</button>
@@ -215,25 +220,80 @@ function vPedidos() {
   const f = ui.pedFiltro;
   const act = S.pedidos.filter(p => p.estado !== "entregado");
   const lista = (f === "activos" ? act : act.filter(p => p.estado === f)).slice().sort((a, b) => b.n - a.n);
-  const filtros = [["activos", "Todos (" + act.length + ")"], ...ESTADOS.slice(0, 3).map(e => [e, EST_LABEL[e] + " (" + act.filter(p => p.estado === e).length + ")"])];
+  const filtros = [["activos", "Todos (" + act.length + ")"], ...["pendiente", "empacado", "enviado", "perdido"].map(e => [e, EST_LABEL[e] + " (" + act.filter(p => p.estado === e).length + ")"]).filter(([k, l]) => k !== "perdido" || !l.endsWith("(0)"))];
   return `<div class="scroller">${filtros.map(([k, l]) => `<button class="chip" type="button" data-action="filtro-ped" data-v="${k}" aria-pressed="${f === k}">${l}</button>`).join("")}</div>
   <div class="list">${lista.length ? lista.map(p => orderCard(p, { track: true, actions: true })).join("") :
     `<div class="empty"><div class="iso"></div><b>No hay pedidos aquí</b><span class="small">Toca “Nuevo pedido” para registrar uno. Cuando lo marques como entregado pasa a Ventas.</span></div>`}</div>`;
 }
 
 /* ---------- Ventas ---------- */
+const mlabel = ym => { const [y, m] = ym.split("-"); return MESES[+m - 1][0].toUpperCase() + MESES[+m - 1].slice(1) + " " + y; };
+const V_FILTROS = [["", "Todas"], ["pendiente", "Pedido pendiente"], ["apartado", "Apartado"], ["pagopend", "Pago pendiente"], ["empacado", "Empacado"], ["enviado", "Enviado"], ["entregado", "Entregado"], ["mayorista", "Cliente mayorista"], ["perdido", "Envío perdido"]];
+const V_CLASE = { pendiente: "st-pendiente", apartado: "pg-abono", pagopend: "pg-pendiente", empacado: "st-empacado", enviado: "st-enviado", entregado: "st-entregado", mayorista: "wa-mayorista", perdido: "st-perdido" };
+function cumple(p, f) {
+  if (!f) return true;
+  if (f === "apartado") return pagoDe(p) === "abono";
+  if (f === "pagopend") return pagoDe(p) === "pendiente";
+  if (f === "mayorista") return p.precioTipo === "mayor";
+  return p.estado === f;
+}
 function vVentas() {
-  const ent = S.pedidos.filter(p => p.estado === "entregado").sort((a, b) => b.fecha.localeCompare(a.fecha) || b.n - a.n);
-  const meses = [...new Set(ent.map(p => p.fecha.slice(0, 7)))].sort().reverse();
+  const seg = `<div class="seg" role="group" aria-label="Ventas"><button type="button" data-action="v-seg" data-v="ventas" aria-pressed="${ui.ventasSeg === "ventas"}">Ventas</button><button type="button" data-action="v-seg" data-v="invertido" aria-pressed="${ui.ventasSeg === "invertido"}">Invertido</button></div>`;
+  if (ui.ventasSeg === "invertido") return seg + vInvertido();
+  const todas = S.pedidos.slice().sort((a, b) => b.fecha.localeCompare(a.fecha) || b.n - a.n);
+  const meses = [...new Set(todas.map(p => p.fecha.slice(0, 7)))].sort().reverse();
   if (ui.ventasMes && !meses.includes(ui.ventasMes)) ui.ventasMes = "";
-  const lista = ui.ventasMes ? ent.filter(p => p.fecha.startsWith(ui.ventasMes)) : ent;
-  const tot = lista.reduce((a, p) => a + pedSub(p), 0), gan = lista.reduce((a, p) => a + pedGan(p), 0), u = lista.reduce((a, p) => a + unidades(p), 0);
-  const mlabel = ym => { const [y, m] = ym.split("-"); return MESES[+m - 1][0].toUpperCase() + MESES[+m - 1].slice(1) + " " + y; };
-  return `<div class="field"><label for="mesSel">Periodo</label>
+  const delPeriodo = ui.ventasMes ? todas.filter(p => p.fecha.startsWith(ui.ventasMes)) : todas;
+  const lista = delPeriodo.filter(p => cumple(p, ui.ventasEst));
+  const validas = lista.filter(p => p.estado !== "perdido");
+  const tot = validas.reduce((a, p) => a + pedSub(p), 0), gan = validas.reduce((a, p) => a + pedGan(p), 0), u = validas.reduce((a, p) => a + unidades(p), 0);
+  const porCobrar = lista.reduce((a, p) => a + saldo(p), 0);
+  return `${seg}<div class="field"><label for="mesSel">Periodo</label>
     <select id="mesSel" data-change="mes"><option value="">Todo el historial</option>${meses.map(m => `<option value="${m}" ${m === ui.ventasMes ? "selected" : ""}>${mlabel(m)}</option>`).join("")}</select></div>
+  <div class="scroller">${V_FILTROS.map(([k, l]) => { const n = delPeriodo.filter(p => cumple(p, k)).length; return `<button class="chip wa-chip ${k ? V_CLASE[k] : ""}" type="button" data-action="v-est" data-v="${k}" aria-pressed="${ui.ventasEst === k}">${l} <b>${n}</b></button>`; }).join("")}</div>
   <section class="hero"><span class="sub">Vendido</span><span class="big">${$(tot)}</span>
-    <div class="split"><div>Pedidos<b>${lista.length}</b></div><div>Unidades<b>${u}</b></div><div>Ganancia<b>${$(gan)}</b></div></div></section>
-  <div class="list">${lista.length ? lista.map(p => orderCard(p, { detalle: true })).join("") : `<div class="empty"><div class="iso"></div><b>Sin ventas en este periodo</b></div>`}</div>`;
+    <div class="split"><div>Pedidos<b>${validas.length}</b></div><div>Unidades<b>${u}</b></div><div>Ganancia<b>${$(gan)}</b></div></div>
+    ${porCobrar ? `<span class="sub" style="margin-top:8px">Por cobrar: <b>${$(porCobrar)}</b></span>` : ""}</section>
+  <div class="list">${lista.length ? lista.map(p => orderCard(p, { detalle: true })).join("") : `<div class="empty"><div class="iso"></div><b>No hay ventas con este filtro</b></div>`}</div>`;
+}
+
+/* ---------- Invertido ---------- */
+function vInvertido() {
+  const todas = S.inversiones.slice().sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const meses = [...new Set([...todas.map(i => i.fecha.slice(0, 7)), ...S.pedidos.map(p => p.fecha.slice(0, 7))])].sort().reverse();
+  if (ui.invMes && !meses.includes(ui.invMes)) ui.invMes = "";
+  const lista = ui.invMes ? todas.filter(i => i.fecha.startsWith(ui.invMes)) : todas;
+  const invertido = lista.reduce((a, i) => a + (+i.valor || 0), 0);
+  const ventas = S.pedidos.filter(p => p.estado !== "perdido" && (!ui.invMes || p.fecha.startsWith(ui.invMes)));
+  const vendido = ventas.reduce((a, p) => a + pedSub(p), 0);
+  const cobrado = ventas.reduce((a, p) => a + pedTotal(p) - saldo(p), 0);
+  const bal = vendido - invertido;
+  const porCat = INV_CATS.map(c => [c, lista.filter(i => (i.categoria || "Otros") === c).reduce((a, i) => a + (+i.valor || 0), 0)]).filter(([, v]) => v);
+  return `<div class="row"><div class="field grow"><label for="invMes">Periodo</label>
+    <select id="invMes" data-change="invmes"><option value="">Todo el historial</option>${meses.map(m => `<option value="${m}" ${m === ui.invMes ? "selected" : ""}>${mlabel(m)}</option>`).join("")}</select></div>
+    <button class="btn" type="button" data-action="new-inv" style="align-self:flex-end">+ Compra</button></div>
+  <section class="hero"><span class="sub">Invertido</span><span class="big">${$(invertido)}</span>
+    <div class="split"><div>Vendido<b>${$(vendido)}</b></div><div>Cobrado<b>${$(cobrado)}</b></div><div>${bal >= 0 ? "Recuperado" : "Falta recuperar"}<b>${$(Math.abs(bal))}</b></div></div></section>
+  ${porCat.length ? `<section class="card" style="display:flex;flex-direction:column;gap:8px"><h3>En qué se fue</h3>${porCat.map(([c, v]) => `<div class="row between"><span>${c}</span><b class="num">${$(v)}</b></div><div class="progress" aria-hidden="true"><i style="width:${Math.round(v / invertido * 100)}%"></i></div>`).join("")}</section>` : ""}
+  <div class="list">${lista.length ? lista.map(i => `<article class="card ccard" data-action="edit-inv" data-id="${i.id}" role="button" tabindex="0">
+      <div class="row between" style="align-items:flex-start"><div class="t grow">${esc(i.descripcion || "Compra")}</div><b class="money">${$(i.valor)}</b></div>
+      <div class="meta">${fmtDate(i.fecha)} · ${esc(i.categoria || "Otros")}${i.lugar ? " · " + esc(i.lugar) : ""}</div>
+      ${i.detalle ? `<div class="small" style="white-space:pre-line">${esc(i.detalle)}</div>` : ""}</article>`).join("")
+    : `<div class="empty"><div class="iso"></div><b>Todavía no registras compras</b><span class="small">Toca “+ Compra” para anotar lo que inviertes en mercancía, insumos o empaques.</span></div>`}</div>`;
+}
+let editingInv = null;
+function editInv(id) {
+  const nuevo = id == null;
+  const i = nuevo ? { id: "i" + Date.now(), fecha: today(), descripcion: "", categoria: "Mercancía", lugar: "", valor: 0, detalle: "" } : { ...S.inversiones.find(x => x.id === id) };
+  openSheet(nuevo ? "Registrar compra" : "Editar compra", `
+    <div class="field"><label for="iv_desc">Qué compraste</label><input id="iv_desc" data-iv="descripcion" value="${esc(i.descripcion)}" placeholder="Ej: Pedido SHEIN de dijes y cadenas"></div>
+    <div class="grid2"><div class="field"><label for="iv_fecha">Fecha</label><input id="iv_fecha" type="date" data-iv="fecha" value="${esc(i.fecha)}"></div>
+      <div class="field"><label for="iv_valor">Valor total</label><input id="iv_valor" inputmode="numeric" data-iv="valor" value="${i.valor || ""}" placeholder="0"></div></div>
+    <div class="grid2"><div class="field"><label for="iv_cat">Categoría</label><select id="iv_cat" data-iv="categoria">${INV_CATS.map(c => `<option ${c === i.categoria ? "selected" : ""}>${c}</option>`).join("")}</select></div>
+      <div class="field"><label for="iv_lugar">Dónde</label><input id="iv_lugar" data-iv="lugar" value="${esc(i.lugar)}" placeholder="SHEIN, Santorini…"></div></div>
+    <div class="field"><label for="iv_det">Detalle (opcional)</label><textarea id="iv_det" data-iv="detalle" rows="3" placeholder="Qué incluía la compra">${esc(i.detalle)}</textarea></div>
+    <button class="btn block" type="button" data-action="save-inv">Guardar</button>
+    ${nuevo ? "" : `<div id="delIBox"><button class="btn block danger" type="button" data-action="del-inv-ask">Eliminar compra</button></div>`}`, () => { editingInv = i; });
 }
 
 /* ---------- Inventario ---------- */
@@ -355,12 +415,12 @@ function openSheet(title, html, onMount) {
   document.body.style.overflow = "hidden";
   onMount && onMount(sheetRoot.querySelector(".sheet"));
 }
-function closeSheet() { sheetRoot.innerHTML = ""; document.body.style.overflow = ""; draft = null; editing = null; editingMat = null; editingC = null; }
+function closeSheet() { sheetRoot.innerHTML = ""; document.body.style.overflow = ""; draft = null; editing = null; editingMat = null; editingC = null; editingInv = null; }
 
 /* Nuevo pedido */
 let draft = null;
 function newOrder() {
-  draft = { fecha: today(), cliente: "", celular: "", cc: "", ciudad: "", direccion: "", precioTipo: "detal", envio: 0, envioPaga: "cliente", pagado: false, estado: "pendiente", lineas: [], q: "" };
+  draft = { fecha: today(), cliente: "", celular: "", cc: "", ciudad: "", direccion: "", precioTipo: "detal", envio: 0, envioPaga: "cliente", pago: "pendiente", abono: 0, estado: "pendiente", lineas: [], q: "", pegado: "" };
   openSheet("Nuevo pedido", `<div id="orderForm"></div>`, () => drawOrderForm());
 }
 const priceFor = (p, t) => t === "mayor" ? p.mayor : p.menor;
@@ -371,9 +431,9 @@ function drawOrderForm(focusId) {
   const faltan = d.lineas.filter(l => { const p = S.productos.find(x => x.codigo === l.codigo); return p && l.cantidad > p.stock; });
   box.innerHTML = `
   <div class="card" style="display:flex;flex-direction:column;gap:10px;background:var(--soft);border-color:transparent">
-    <div class="field"><label for="f_pegado">Pegar datos del cliente</label>
-      <textarea id="f_pegado" data-f="pegado" rows="4" placeholder="Pega aquí el mensaje de WhatsApp con nombre, ciudad, dirección, celular y cédula">${esc(d.pegado || "")}</textarea></div>
-    <div class="row" style="gap:8px"><button class="btn grow" type="button" data-action="organizar">Organizar datos</button>${navigator.clipboard && navigator.clipboard.readText ? `<button class="btn ghost" type="button" data-action="pegar">Pegar</button>` : ""}</div>
+    <div class="field"><label for="f_pegado">Pegar mensaje del cliente o la factura</label>
+      <textarea id="f_pegado" data-f="pegado" rows="4" placeholder="Pega los datos de envío o la factura que le mandaste. Puedes pegar uno y después el otro.">${esc(d.pegado || "")}</textarea></div>
+    <div class="row" style="gap:8px"><button class="btn grow" type="button" data-action="organizar">Organizar</button>${navigator.clipboard && navigator.clipboard.readText ? `<button class="btn ghost" type="button" data-action="pegar">Pegar</button>` : ""}</div>
   </div>
   <div class="grid2"><div class="field"><label for="f_fecha">Fecha</label><input id="f_fecha" type="date" data-f="fecha" value="${d.fecha}"></div>
     <div class="field"><label for="f_cc">Cédula</label><input id="f_cc" inputmode="numeric" data-f="cc" value="${esc(d.cc)}"></div></div>
@@ -396,10 +456,15 @@ function drawOrderForm(focusId) {
   ${faltan.length ? `<div class="warn">No alcanza el stock de: ${faltan.map(l => esc(l.nombre)).join(", ")}. Puedes guardarlo igual; el inventario quedará en negativo hasta que las fabriques.</div>` : ""}
   <div class="grid2"><div class="field"><label for="f_envio">Valor envío</label><input id="f_envio" inputmode="numeric" data-f="envio" value="${d.envio || ""}" placeholder="0"></div>
     <div class="field"><span class="lbl">¿Quién paga el envío?</span><div class="seg"><button type="button" data-action="paga" data-v="cliente" aria-pressed="${d.envioPaga === "cliente"}">Cliente</button><button type="button" data-action="paga" data-v="yo" aria-pressed="${d.envioPaga === "yo"}">Blu</button></div></div></div>
-  <div class="field"><span class="lbl">¿Ya pagó?</span><div class="seg"><button type="button" data-action="pagado" data-v="1" aria-pressed="${d.pagado}">Sí, pagó</button><button type="button" data-action="pagado" data-v="0" aria-pressed="${!d.pagado}">Todavía no</button></div></div>
+  <div class="field"><span class="lbl">Pago</span><div class="seg" style="grid-template-columns:repeat(3,1fr)">
+    <button type="button" data-action="pago" data-v="pagado" aria-pressed="${d.pago === "pagado"}">Pagó todo</button>
+    <button type="button" data-action="pago" data-v="abono" aria-pressed="${d.pago === "abono"}">Abonó</button>
+    <button type="button" data-action="pago" data-v="pendiente" aria-pressed="${d.pago === "pendiente"}">No ha pagado</button></div></div>
+  ${d.pago === "abono" ? `<div class="field"><label for="f_abono">Valor del abono</label><input id="f_abono" inputmode="numeric" data-f="abono" value="${d.abono || ""}" placeholder="${Math.round(pedTotal(d) / 2)}"></div>` : ""}
   <div class="totals"><div><span>Productos</span><span>${$(pedSub(d))}</span></div>
     ${d.envio ? `<div><span>Envío ${d.envioPaga === "yo" ? "(lo pagas tú)" : ""}</span><span>${d.envioPaga === "yo" ? "—" : $(d.envio)}</span></div>` : ""}
     <div class="t"><span>Total a cobrar</span><span>${$(pedTotal(d))}</span></div>
+    ${d.pago === "abono" ? `<div><span>Abono</span><span>${$(d.abono)}</span></div><div><span>Saldo pendiente</span><span>${$(Math.max(0, pedTotal(d) - (+d.abono || 0)))}</span></div>` : ""}
     <div class="small muted"><span>Ganancia estimada</span><span>${$(pedGan(d))}</span></div></div>
   <div id="formErr" class="warn" hidden></div>
   <button class="btn block" type="button" data-action="save-order">Guardar pedido</button>`;
@@ -449,13 +514,64 @@ function organizar(texto) {
   delete out.barrio;
   return out;
 }
+/* Lee la factura que le mandas al cliente: "(1) collar Soy Luna: 35.000", "Abono (50%): 17.500", "Envío: 12.000" */
+const plata = s => parseInt(String(s).replace(/[^\d]/g, ""), 10) || 0;
+const TIPO_PALABRAS = [["manillas", "Manillas parejas"], ["manilla", "Manilla individual"], ["pulsera", "Pulsera"], ["cadenitas", "Cadenitas parejas"], ["cadenas", "Cadenitas parejas"], ["cadenita", "Cadenita individual"], ["cadena", "Cadenita individual"], ["collares", "Collares pareja"], ["collar", "Collar individual"], ["choker", "Collares pareja"], ["anillos", "Anillos pareja"], ["anillo", "Anillos"]];
+function buscarProducto(texto) {
+  const n = norm(texto).replace(/[^a-z0-9ñ ]/g, " ").replace(/\s+/g, " ").trim();
+  const tipoTxt = (TIPO_PALABRAS.find(([w]) => new RegExp("\\b" + w + "\\b").test(n)) || [])[1];
+  const trio = /\btrio|tres\b/.test(n), pareja = /\bpareja|parejas|duo\b/.test(n);
+  let mejor = null, puntos = 0;
+  for (const p of activos()) {
+    const nom = norm(p.nombre).replace(/[^a-z0-9ñ ]/g, " ").replace(/\s+/g, " ").trim();
+    if (!nom || !(" " + n + " ").includes(" " + nom + " ")) continue;
+    let s = nom.length * 2;
+    if (tipoTxt && p.tipo === tipoTxt) s += 30;
+    else if (tipoTxt && p.tipo.split(" ")[0].toLowerCase().startsWith(tipoTxt.split(" ")[0].toLowerCase().slice(0, 6))) s += 15;
+    if (trio && /trios/.test(p.tipo)) s += 20;
+    if (pareja && /parejas|pareja/.test(p.tipo)) s += 10;
+    if (s > puntos) { puntos = s; mejor = p; }
+  }
+  return mejor;
+}
+function leerFactura(texto) {
+  const res = { lineas: [], abono: 0, envio: 0, pagado: false };
+  String(texto || "").split("\n").map(l => l.replace(/^[\s•\-–*·>✨💗💖❤️🩷]+/u, "").trim()).filter(Boolean).forEach(l => {
+    const n = norm(l);
+    if (/^total|saldo/.test(n.replace(/[^a-z ]/g, "").trim())) return;
+    if (/abono/.test(n)) { res.abono = plata(l.split(":").pop()); return; }
+    if (/env[ií]o|domicilio|flete/.test(n) && /\d/.test(l)) { res.envio = plata(l.split(":").pop()); return; }
+    if (/pag[oó] (completo|total)|ya pag/.test(n)) { res.pagado = true; return; }
+    let m = l.match(/^\(?\s*(\d+)\s*\)?\s*(?:x|×|und\.?|unid\.?|uds?\.?)?\s+(.+?)\s*[:=\-–]\s*\$?\s*([\d.,]+)\s*$/i)
+      || l.match(/^(.+?)\s*(?:x|×)\s*(\d+)\s*[:=\-–]\s*\$?\s*([\d.,]+)\s*$/i);
+    if (!m) return;
+    let cant, nombre, total;
+    if (/^\(?\s*\d/.test(l)) { cant = +m[1]; nombre = m[2]; total = plata(m[3]); } else { nombre = m[1]; cant = +m[2]; total = plata(m[3]); }
+    if (!cant || !total || !nombre) return;
+    res.lineas.push({ texto: nombre.trim(), cantidad: cant, total });
+  });
+  return res;
+}
 function aplicarOrganizado() {
-  const r = organizar(draft.pegado);
-  const campos = ["cliente", "ciudad", "direccion", "celular", "cc"].filter(k => r[k]);
-  if (!campos.length) { toast("No encontré datos en ese mensaje"); return; }
+  const r = organizar(draft.pegado), f = leerFactura(draft.pegado);
+  // una factura trae productos y valores; los datos de envío llegan en otro mensaje
+  const campos = f.lineas.length ? [] : ["cliente", "ciudad", "direccion", "celular", "cc"].filter(k => r[k]);
   campos.forEach(k => draft[k] = r[k]);
-  draftPegadoUsado = true; drawOrderForm();
-  toast("Listo. Revisa que cada dato quedó en su lugar");
+  const sinMatch = [];
+  f.lineas.forEach(x => {
+    const p = buscarProducto(x.texto), precio = Math.round(x.total / x.cantidad);
+    if (p) {
+      const ex = draft.lineas.find(l => l.codigo === p.codigo);
+      if (ex) { ex.cantidad = x.cantidad; ex.precio = precio; }
+      else draft.lineas.push({ codigo: p.codigo, nombre: p.nombre, tipo: p.tipo, cantidad: x.cantidad, precio, costo: costoProd(p) });
+      if (precio === p.mayor && p.mayor !== p.menor) draft.precioTipo = "mayor";
+    } else { sinMatch.push(x.texto); draft.lineas.push({ codigo: null, nombre: x.texto, tipo: "No está en el catálogo", cantidad: x.cantidad, precio, costo: 0 }); }
+  });
+  if (f.envio) { draft.envio = f.envio; draft.envioPaga = "cliente"; }
+  if (f.abono) { draft.pago = "abono"; draft.abono = f.abono; } else if (f.pagado) draft.pago = "pagado";
+  if (!campos.length && !f.lineas.length) { toast("No encontré datos en ese mensaje"); return; }
+  draft.pegado = ""; drawOrderForm();
+  toast(sinMatch.length ? "Revisa: no encontré “" + sinMatch.join("”, “") + "” en el catálogo" : f.lineas.length ? "Listo: " + f.lineas.length + " producto" + (f.lineas.length > 1 ? "s" : "") + " agregado" + (f.lineas.length > 1 ? "s" : "") + ". Revisa antes de guardar" : "Listo. Revisa que cada dato quedó en su lugar");
 }
 let draftPegadoUsado = false;
 
@@ -465,19 +581,22 @@ function saveOrder() {
   if (!d.lineas.length) miss.push("al menos un producto");
   if (miss.length) { err.hidden = false; err.textContent = "Falta " + miss.join(" y ") + "."; return; }
   d.lineas.forEach(l => { const p = S.productos.find(x => x.codigo === l.codigo); if (p) { p.stock -= l.cantidad; guardar("productos", p); } });
-  const ped = { ...d, id: "p" + Date.now(), n: nextN(), envio: +d.envio || 0 }; delete ped.q; delete ped.pegado;
+  const ped = { ...d, id: "p" + Date.now(), n: nextN(), envio: +d.envio || 0, pagado: d.pago === "pagado", abono: d.pago === "abono" ? (+d.abono || 0) : 0 }; delete ped.q; delete ped.pegado;
   S.pedidos.push(ped); guardar("pedidos", ped); closeSheet(); ui.pedFiltro = "activos"; go("pedidos"); toast("Pedido #" + ped.n + " guardado · stock descontado");
 }
 function verPedido(id) {
   const p = S.pedidos.find(x => x.id === id); if (!p) return;
-  const prev = ESTADOS[ESTADOS.indexOf(p.estado) - 1];
+  const prev = p.estado === "perdido" ? null : ESTADOS[ESTADOS.indexOf(p.estado) - 1];
   openSheet("Pedido #" + p.n, `${orderCard(p, { track: true })}
     <div class="card" style="display:grid;gap:6px;font-size:14px">
       <div><span class="muted small">Celular</span><br>${esc(p.celular) || "—"}</div>
       <div><span class="muted small">Cédula</span><br>${esc(p.cc) || "—"}</div>
       <div><span class="muted small">Dirección</span><br>${esc(p.direccion) || "—"}</div>
       <div><span class="muted small">Precio</span><br>${p.precioTipo === "mayor" ? "Por mayor" : "Detal"}</div></div>
-    <button class="btn block line" type="button" data-action="toggle-pago" data-id="${p.id}">${p.pagado ? "Marcar como no pagado" : "Marcar como pagado"}</button>
+    <div class="field"><span class="lbl">Pago</span><div class="seg" style="grid-template-columns:repeat(3,1fr)">
+      ${["pagado", "abono", "pendiente"].map(k => `<button type="button" data-action="set-pago" data-id="${p.id}" data-v="${k}" aria-pressed="${pagoDe(p) === k}">${{ pagado: "Pagó todo", abono: "Abonó", pendiente: "No ha pagado" }[k]}</button>`).join("")}</div></div>
+    ${pagoDe(p) === "abono" ? `<div class="field"><label for="d_abono">Valor del abono</label><input id="d_abono" inputmode="numeric" data-abono="${p.id}" value="${p.abono || ""}"></div>` : ""}
+    ${p.estado === "enviado" ? `<button class="btn block ghost" type="button" data-action="perdido" data-id="${p.id}" style="color:var(--loss)">Marcar envío perdido</button>` : ""}
     ${prev ? `<button class="btn block ghost" type="button" data-action="retroceder" data-id="${p.id}">Devolver a ${EST_LABEL[prev].toLowerCase()}</button>` : ""}
     <div id="cancelBox"><button class="btn block danger" type="button" data-action="cancel-ask" data-id="${p.id}">${p.estado === "entregado" ? "Borrar venta" : "Cancelar pedido"}</button></div>`);
 }
@@ -569,11 +688,12 @@ async function entregarArchivo(blob, filename) {
 function descargarExcel() {
   const fila = (p, l) => ({ "N° pedido": p.n, "Fecha": p.fecha, "Estado": EST_LABEL[p.estado], "Cliente": p.cliente, "Cédula": p.cc, "Celular": p.celular, "Ciudad": p.ciudad, "Dirección": p.direccion,
     "Producto": l.nombre, "Tipo": l.tipo, "Cantidad": l.cantidad, "Precio unitario": l.precio, "Subtotal": l.cantidad * l.precio, "Costo": l.cantidad * (l.costo || 0),
-    "Envío": p.envio, "Paga envío": p.envioPaga === "yo" ? "Blu" : "Cliente", "Pagado": p.pagado ? "Sí" : "No", "Precio": p.precioTipo === "mayor" ? "Por mayor" : "Detal" });
+    "Envío": p.envio, "Paga envío": p.envioPaga === "yo" ? "Blu" : "Cliente", "Pago": PAGO_LABEL[pagoDe(p)], "Abono": p.abono || 0, "Saldo": saldo(p), "Precio": p.precioTipo === "mayor" ? "Por mayor" : "Detal" });
   const rows = arr => arr.slice().sort((a, b) => a.n - b.n).flatMap(p => p.lineas.map(l => fila(p, l)));
   const wb = XLSX.utils.book_new();
   const add = (name, data) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.length ? data : [{}]), name);
   add("Pedidos", rows(S.pedidos.filter(p => p.estado !== "entregado")));
+  add("Invertido", S.inversiones.slice().sort((a, b) => a.fecha.localeCompare(b.fecha)).map(i => ({ "Fecha": i.fecha, "Qué compré": i.descripcion, "Categoría": i.categoria, "Dónde": i.lugar, "Valor": i.valor, "Detalle": i.detalle })));
   add("Ventas", rows(S.pedidos.filter(p => p.estado === "entregado")));
   add("Inventario", activos().slice().sort((a, b) => a.tipo.localeCompare(b.tipo) || a.nombre.localeCompare(b.nombre)).map(p => ({ "Código": p.codigo, "Nombre": p.nombre, "Tipo": p.tipo, "Stock": p.stock })));
   add("Costos", S.productos.map(p => { const c = costoProd(p); return { "Código": p.codigo, "Nombre": p.nombre, "Tipo": p.tipo, "Remodelación": REMO[remo(p)], "Hilo": p.hilo, "Dije": p.dije, "Mostacillas": p.mostacillas, "Compra": p.compra, "Mano de obra": p.manoObra, "Empaque": p.empaque, "Costo total": c, "Precio por mayor": p.mayor, "Ganancia por mayor": p.mayor - c, "Precio detal": p.menor, "Ganancia detal": p.menor - c }; }));
@@ -619,7 +739,7 @@ document.addEventListener("click", e => {
     case "close": case "close-bg": closeSheet(); break;
     case "ptipo": draft.precioTipo = v; draft.lineas.forEach(l => { const p = S.productos.find(x => x.codigo === l.codigo); if (p) l.precio = priceFor(p, v); }); drawOrderForm(); break;
     case "paga": draft.envioPaga = v; drawOrderForm(); break;
-    case "pagado": draft.pagado = v === "1"; drawOrderForm(); break;
+    case "pago": draft.pago = v; if (v === "abono" && !draft.abono) draft.abono = Math.round(pedTotal(draft) / 2); drawOrderForm(); break;
     case "add-line": { const p = prodC(); const ex = draft.lineas.find(l => l.codigo === p.codigo);
       if (ex) ex.cantidad++; else draft.lineas.push({ codigo: p.codigo, nombre: p.nombre, tipo: p.tipo, cantidad: 1, precio: priceFor(p, draft.precioTipo), costo: costoProd(p) });
       draft.q = ""; drawOrderForm(); break; }
@@ -629,10 +749,20 @@ document.addEventListener("click", e => {
     case "organizar": aplicarOrganizado(); break;
     case "pegar": navigator.clipboard.readText().then(txt => { if (!txt) { toast("No hay nada copiado"); return; } draft.pegado = txt; aplicarOrganizado(); })
       .catch(() => toast("No se pudo pegar. Mantén presionado el cuadro y toca Pegar")); break;
-    case "avanzar": { const p = S.pedidos.find(x => x.id === t.dataset.id); p.estado = ESTADOS[ESTADOS.indexOf(p.estado) + 1]; guardar("pedidos", p); render();
+    case "avanzar": { const p = S.pedidos.find(x => x.id === t.dataset.id); p.estado = p.estado === "perdido" ? "enviado" : ESTADOS[ESTADOS.indexOf(p.estado) + 1]; guardar("pedidos", p); render();
       toast(p.estado === "entregado" ? "Pedido #" + p.n + " entregado · pasó a Ventas" : "Pedido #" + p.n + ": " + EST_LABEL[p.estado].toLowerCase()); break; }
     case "ver": verPedido(t.dataset.id); break;
-    case "toggle-pago": { const p = S.pedidos.find(x => x.id === t.dataset.id); p.pagado = !p.pagado; guardar("pedidos", p); render(); verPedido(p.id); break; }
+    case "set-pago": { const p = S.pedidos.find(x => x.id === t.dataset.id); p.pago = v; p.pagado = v === "pagado"; if (v === "abono" && !p.abono) p.abono = Math.round(pedTotal(p) / 2); if (v !== "abono") p.abono = 0; guardar("pedidos", p); render(); verPedido(p.id); break; }
+    case "perdido": { const p = S.pedidos.find(x => x.id === t.dataset.id); p.estado = "perdido"; guardar("pedidos", p); closeSheet(); render(); toast("Pedido #" + p.n + " marcado como envío perdido"); break; }
+    case "v-seg": ui.ventasSeg = v; render(); break;
+    case "v-est": ui.ventasEst = v; render(); break;
+    case "new-inv": editInv(null); break;
+    case "edit-inv": editInv(t.dataset.id); break;
+    case "save-inv": { const i = editingInv; if (!i.descripcion.trim() || !i.valor) { toast("Escribe qué compraste y el valor"); return; }
+      const k = S.inversiones.findIndex(x => x.id === i.id); if (k >= 0) S.inversiones[k] = i; else S.inversiones.push(i);
+      guardar("inversiones", i); closeSheet(); ui.ventasSeg = "invertido"; if (tab !== "ventas") go("ventas"); else render(); toast("Compra guardada"); break; }
+    case "del-inv-ask": $id("delIBox").innerHTML = `<div class="warn">¿Eliminar esta compra?</div><div class="row" style="margin-top:8px"><button class="btn danger grow" type="button" data-action="del-inv-yes">Sí, eliminar</button><button class="btn ghost grow" type="button" data-action="close">No</button></div>`; break;
+    case "del-inv-yes": { const id = editingInv.id; S.inversiones = S.inversiones.filter(x => x.id !== id); borrar("inversiones", id); closeSheet(); render(); toast("Compra eliminada"); break; }
     case "retroceder": { const p = S.pedidos.find(x => x.id === t.dataset.id); p.estado = ESTADOS[ESTADOS.indexOf(p.estado) - 1]; guardar("pedidos", p); render(); verPedido(p.id); break; }
     case "cancel-ask": { const p = S.pedidos.find(x => x.id === t.dataset.id);
       $id("cancelBox").innerHTML = `<div class="warn">${p.estado === "entregado" ? "¿Borrar esta venta? Se quita del historial; el inventario no cambia." : "¿Cancelar este pedido? Las unidades vuelven al inventario."}</div>
@@ -672,7 +802,7 @@ document.addEventListener("click", e => {
     case "c-mes": { const [y, m] = ui.cMes.split("-").map(Number); const d = new Date(y, m - 1 + (+t.dataset.d), 1); ui.cMes = d.getFullYear() + "-" + pad(d.getMonth() + 1); ui.cDia = ""; render(); break; }
     case "excel": descargarExcel(); break;
     case "respaldo": descargarRespaldo(); break;
-    case "logout": sb.auth.signOut().then(() => { S = { productos: [], materia: [], pedidos: [], contenido: [] }; uid = null; iniciar(null); }); break;
+    case "logout": sb.auth.signOut().then(() => { S = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [] }; uid = null; iniciar(null); }); break;
   }
 });
 document.addEventListener("keydown", e => {
@@ -682,15 +812,19 @@ document.addEventListener("keydown", e => {
 document.addEventListener("input", e => {
   const t = e.target;
   if (t.dataset.input) { ui[t.dataset.input] = t.value; render(); const el = $id(t.id); el.focus(); el.setSelectionRange(el.value.length, el.value.length); return; }
-  if (t.dataset.f && draft) { const k = t.dataset.f; draft[k] = k === "envio" ? num(t.value) : t.value; if (k === "q" || k === "envio") drawOrderForm(t.id); return; }
+  if (t.dataset.f && draft) { const k = t.dataset.f; draft[k] = (k === "envio" || k === "abono") ? num(t.value) : t.value; if (k === "q" || k === "envio" || k === "abono") drawOrderForm(t.id); return; }
   if (t.dataset.lp && draft) { draft.lineas[+t.dataset.lp].precio = num(t.value); drawOrderForm(t.id); return; }
   if (t.dataset.pp && editing) { const k = t.dataset.pp; editing[k] = (k === "nombre" || k === "tipo") ? t.value : (k === "stock" ? (parseInt(t.value, 10) || 0) : num(t.value)); drawProdTot(); return; }
   if (t.dataset.mm && editingMat) { const k = t.dataset.mm; editingMat[k] = (k === "cantidad" || k === "precio") ? num(t.value) : t.value; return; }
+  if (t.dataset.iv && editingInv) { editingInv[t.dataset.iv] = t.dataset.iv === "valor" ? num(t.value) : t.value; return; }
+  if (t.dataset.abono) { const p = S.pedidos.find(x => x.id === t.dataset.abono); if (p) { p.abono = num(t.value); clearTimeout(p._t); p._t = setTimeout(() => { delete p._t; guardar("pedidos", p); render(); }, 600); } return; }
   if (t.dataset.cc && editingC) { editingC[t.dataset.cc] = t.value; if (t.dataset.cc === "inspiracion" || t.dataset.cc === "link") drawCLinks(); }
 });
 document.addEventListener("change", e => {
   const t = e.target;
   if (t.dataset.change === "mes") { ui.ventasMes = t.value; render(); }
+  if (t.dataset.change === "invmes") { ui.invMes = t.value; render(); }
+  if (t.dataset.iv && editingInv) editingInv[t.dataset.iv] = t.value;
   if (t.dataset.pp && editing) { editing[t.dataset.pp] = t.value; drawProdTot(); }
   if (t.dataset.cc && editingC) editingC[t.dataset.cc] = t.value;
   if (t.id === "fileImport" && t.files && t.files[0]) importar(t.files[0]);
