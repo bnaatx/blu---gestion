@@ -14,6 +14,9 @@ const ETAPA_LABEL = { apartado: "Apartado", pagopend: "Pago pendiente" };
 const ETAPA_CLASE = { apartado: "pg-abono", pagopend: "pg-pendiente" };
 const etLabel = k => ETAPA_LABEL[k] || EST_LABEL[k];
 const etClase = k => ETAPA_CLASE[k] || "st-" + k;
+const CANALES = { whatsapp: "WhatsApp Business", instagram: "Instagram" };
+const canalDe = p => p.canal || "whatsapp";
+const canalTag = p => `<span class="canal canal-${canalDe(p)}">${canalDe(p) === "instagram" ? "◎ Instagram" : "✆ WhatsApp"}</span>`;
 const INV_CATS = ["Mercancía", "Insumos", "Empaques", "Publicidad", "Envíos", "Otros"];
 const NEXT_LABEL = { pendiente: "Marcar empacado", empacado: "Marcar enviado", enviado: "Marcar entregado", perdido: "Marcar reenviado" };
 const TIPOS = ["Pulsera", "Manilla individual", "Manillas parejas", "Manillas trios", "Cadenita individual", "Cadenitas parejas", "Collar individual", "Collares pareja", "Anillos", "Anillos pareja"];
@@ -267,7 +270,7 @@ function orderCard(p, opts = {}) {
     <div class="items">${p.lineas.map(l => `<div class="it"><div class="it-main">${thumb(prodDe(l.codigo), "sm")}<span class="qty">${l.cantidad}</span><div class="grow"><b>${esc(l.nombre)}</b><div class="muted small">${esc(l.tipo)}${l.cantidad > 1 ? " · " + $(l.precio) + " c/u" : ""}${l.nota ? " · " + esc(l.nota) : ""}</div>${l.tarjeta ? '<span class="tag card-tag">💌 Tarjeta personalizada</span>' : ""}</div></div><span class="num">${$(l.cantidad * l.precio)}</span></div>`).join("")}
       ${p.envio || modoEnvio(p) === "contraentrega" ? `<div class="muted"><span>Envío ${modoEnvio(p) === "contraentrega" ? "contraentrega · lo paga al recibir" : modoEnvio(p) === "blu" ? "· lo pagó Blu" : "contado"}</span><span class="num">${p.envio ? $(p.envio) : "—"}</span></div>` : ""}</div>
     <div class="row between wrap">
-      <div class="row wrap" style="gap:6px">${pagoDe(p) !== "pagado" && p.estado !== "pendiente" ? `<span class="pill pg-${pagoDe(p)}">${PAGO_LABEL[pagoDe(p)]}</span>` : ""}${p.precioTipo === "mayor" ? '<span class="pill wa-mayorista">Cliente mayorista</span>' : ""}${p.importado ? '<span class="tag">Del Excel</span>' : ""}</div>
+      <div class="row wrap" style="gap:6px">${pagoDe(p) !== "pagado" && p.estado !== "pendiente" ? `<span class="pill pg-${pagoDe(p)}">${PAGO_LABEL[pagoDe(p)]}</span>` : ""}${p.precioTipo === "mayor" ? '<span class="pill wa-mayorista">Cliente mayorista</span>' : ""}${canalTag(p)}${p.importado ? '<span class="tag">Del Excel</span>' : ""}</div>
       <div style="text-align:right"><span class="money">${$(pedTotal(p))}</span>${saldo(p) && saldo(p) < pedTotal(p) ? `<div class="small muted">Abonó ${$(p.abono)} · debe ${$(saldo(p))}</div>` : saldo(p) ? `<div class="small" style="color:var(--loss)">Debe ${$(saldo(p))}</div>` : ""}</div>
     </div>
     ${opts.actions ? `<div class="row" style="gap:8px">
@@ -290,13 +293,14 @@ function vPedidos() {
 
 /* ---------- Ventas ---------- */
 const mlabel = ym => { const [y, m] = ym.split("-"); return MESES[+m - 1][0].toUpperCase() + MESES[+m - 1].slice(1) + " " + y; };
-const V_FILTROS = [["", "Todas"], ["pendiente", "Pedido pendiente"], ["apartado", "Apartado"], ["pagopend", "Pago pendiente"], ["empacado", "Empacado"], ["enviado", "Enviado"], ["entregado", "Entregado"], ["mayorista", "Cliente mayorista"], ["perdido", "Envío perdido"]];
+const V_FILTROS = [["", "Todas"], ["pendiente", "Pedido pendiente"], ["apartado", "Apartado"], ["pagopend", "Pago pendiente"], ["empacado", "Empacado"], ["enviado", "Enviado"], ["entregado", "Entregado"], ["mayorista", "Cliente mayorista"], ["perdido", "Envío perdido"], ["whatsapp", "WhatsApp"], ["instagram", "Instagram"]];
 const V_CLASE = { pendiente: "st-pendiente", apartado: "pg-abono", pagopend: "pg-pendiente", empacado: "st-empacado", enviado: "st-enviado", entregado: "st-entregado", mayorista: "wa-mayorista", perdido: "st-perdido" };
 function cumple(p, f) {
   if (!f) return true;
   if (f === "apartado") return pagoDe(p) === "abono";
   if (f === "pagopend") return pagoDe(p) === "pendiente";
   if (f === "mayorista") return p.precioTipo === "mayor";
+  if (f === "whatsapp" || f === "instagram") return canalDe(p) === f;
   return etapa(p) === f;
 }
 function vVentas() {
@@ -315,7 +319,8 @@ function vVentas() {
   <div class="scroller">${V_FILTROS.map(([k, l]) => { const n = delPeriodo.filter(p => cumple(p, k)).length; return `<button class="chip wa-chip ${k ? V_CLASE[k] : ""}" type="button" data-action="v-est" data-v="${k}" aria-pressed="${ui.ventasEst === k}">${l} <b>${n}</b></button>`; }).join("")}</div>
   <section class="hero"><span class="sub">Vendido</span><span class="big">${$(tot)}</span>
     <div class="split"><div>Pedidos<b>${validas.length}</b></div><div>Unidades<b>${u}</b></div><div>Ganancia<b>${$(gan)}</b></div></div>
-    ${porCobrar ? `<span class="sub" style="margin-top:8px">Por cobrar: <b>${$(porCobrar)}</b></span>` : ""}</section>
+    ${porCobrar ? `<span class="sub" style="margin-top:8px">Por cobrar: <b>${$(porCobrar)}</b></span>` : ""}
+    ${(() => { const w = validas.filter(p => canalDe(p) === "whatsapp"), ig = validas.filter(p => canalDe(p) === "instagram"); return validas.length ? `<span class="sub">WhatsApp: <b>${w.length}</b> (${$(w.reduce((s, p) => s + pedSub(p), 0))}) · Instagram: <b>${ig.length}</b> (${$(ig.reduce((s, p) => s + pedSub(p), 0))})</span>` : ""; })()}</section>
   <div class="list">${lista.length ? lista.map(p => orderCard(p, { detalle: true })).join("") : `<div class="empty"><div class="iso"></div><b>No hay ventas con este filtro</b></div>`}</div>`;
 }
 
@@ -482,7 +487,7 @@ function closeSheet() { sheetRoot.innerHTML = ""; document.body.style.overflow =
 /* Nuevo pedido */
 let draft = null;
 function newOrder() {
-  draft = { fecha: today(), cliente: "", celular: "", cc: "", ciudad: "", direccion: "", precioTipo: "detal", envio: 0, envioModo: "contraentrega", envioAuto: true, pago: "pendiente", abono: 0, estado: "pendiente", lineas: [], q: "", pegado: "" };
+  draft = { fecha: today(), cliente: "", celular: "", cc: "", ciudad: "", direccion: "", precioTipo: "detal", envio: 0, envioModo: "contraentrega", envioAuto: true, pago: "pendiente", abono: 0, estado: "pendiente", canal: "whatsapp", lineas: [], q: "", pegado: "" };
   openSheet("Nuevo pedido", `<div id="orderForm"></div>`, () => drawOrderForm());
 }
 const priceFor = (p, t) => t === "mayor" ? p.mayor : p.menor;
@@ -497,6 +502,7 @@ function drawOrderForm(focusId) {
       <textarea id="f_pegado" data-f="pegado" rows="4" placeholder="Pega los datos de envío o la factura que le mandaste. Puedes pegar uno y después el otro.">${esc(d.pegado || "")}</textarea></div>
     <div class="row" style="gap:8px"><button class="btn grow" type="button" data-action="organizar">Organizar</button>${navigator.clipboard && navigator.clipboard.readText ? `<button class="btn ghost" type="button" data-action="pegar">Pegar</button>` : ""}</div>
   </div>
+  <div class="field"><span class="lbl">¿Por dónde llegó el pedido?</span><div class="seg"><button type="button" data-action="canal" data-v="whatsapp" aria-pressed="${d.canal === "whatsapp"}">WhatsApp Business</button><button type="button" data-action="canal" data-v="instagram" aria-pressed="${d.canal === "instagram"}">Instagram</button></div></div>
   <div class="grid2"><div class="field"><label for="f_fecha">Fecha</label><input id="f_fecha" type="date" data-f="fecha" value="${d.fecha}"></div>
     <div class="field"><label for="f_cc">Cédula</label><input id="f_cc" inputmode="numeric" data-f="cc" value="${esc(d.cc)}"></div></div>
   <div class="field"><label for="f_cliente">Cliente</label><input id="f_cliente" data-f="cliente" value="${esc(d.cliente)}" placeholder="Nombre y apellido" autocomplete="off"></div>
@@ -672,6 +678,7 @@ function verPedido(id) {
       <div><span class="muted small">Cédula</span><br>${esc(p.cc) || "—"}</div>
       <div><span class="muted small">Dirección</span><br>${esc(p.direccion) || "—"}</div>
       <div><span class="muted small">Precio</span><br>${p.precioTipo === "mayor" ? "Por mayor" : "Detal"}</div></div>
+    <div class="field"><span class="lbl">Llegó por</span><div class="seg">${Object.keys(CANALES).map(k => `<button type="button" data-action="set-canal" data-id="${p.id}" data-v="${k}" aria-pressed="${canalDe(p) === k}">${CANALES[k]}</button>`).join("")}</div></div>
     <div class="field"><span class="lbl">Pago</span><div class="seg" style="grid-template-columns:repeat(3,1fr)">
       ${["pagado", "abono", "pendiente"].map(k => `<button type="button" data-action="set-pago" data-id="${p.id}" data-v="${k}" aria-pressed="${pagoDe(p) === k}">${{ pagado: "Pagó todo", abono: "Abonó", pendiente: "No ha pagado" }[k]}</button>`).join("")}</div></div>
     ${pagoDe(p) === "abono" ? `<div class="field"><label for="d_abono">Valor del abono</label><input id="d_abono" inputmode="numeric" data-abono="${p.id}" value="${p.abono || ""}"></div>` : ""}
@@ -782,7 +789,7 @@ async function descargarExcel() {
   try { await cargarXLSX(); } catch (e) { toast("No se pudo armar el Excel. Revisa tu conexión"); return; }
   const fila = (p, l) => ({ "N° pedido": p.n, "Fecha": p.fecha, "Estado": EST_LABEL[p.estado], "Cliente": p.cliente, "Cédula": p.cc, "Celular": p.celular, "Ciudad": p.ciudad, "Dirección": p.direccion,
     "Producto": l.nombre, "Tipo": l.tipo, "Cantidad": l.cantidad, "Precio unitario": l.precio, "Subtotal": l.cantidad * l.precio, "Costo": l.cantidad * (l.costo || 0),
-    "Envío": p.envio, "Tipo de envío": { contado: "Contado", contraentrega: "Contraentrega", blu: "Lo pagó Blu" }[modoEnvio(p)], "Pago": PAGO_LABEL[pagoDe(p)], "Abono": p.abono || 0, "Saldo": saldo(p), "Precio": p.precioTipo === "mayor" ? "Por mayor" : "Detal" });
+    "Envío": p.envio, "Tipo de envío": { contado: "Contado", contraentrega: "Contraentrega", blu: "Lo pagó Blu" }[modoEnvio(p)], "Pago": PAGO_LABEL[pagoDe(p)], "Abono": p.abono || 0, "Saldo": saldo(p), "Precio": p.precioTipo === "mayor" ? "Por mayor" : "Detal", "Canal": CANALES[canalDe(p)] });
   const rows = arr => arr.slice().sort((a, b) => a.n - b.n).flatMap(p => p.lineas.map(l => fila(p, l)));
   const wb = XLSX.utils.book_new();
   const add = (name, data) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.length ? data : [{}]), name);
@@ -839,6 +846,8 @@ document.addEventListener("click", e => {
       if (ex) ex.cantidad++; else draft.lineas.push({ codigo: p.codigo, nombre: p.nombre, tipo: p.tipo, cantidad: 1, precio: priceFor(p, draft.precioTipo), costo: costoProd(p) });
       draft.q = ""; drawOrderForm(); break; }
     case "del-line": draft.lineas.splice(+t.dataset.i, 1); drawOrderForm(); break;
+    case "canal": draft.canal = v; drawOrderForm(); break;
+    case "set-canal": { const p = S.pedidos.find(x => x.id === t.dataset.id); p.canal = v; guardar("pedidos", p); render(); verPedido(p.id); break; }
     case "tarjeta": draft.lineas[+t.dataset.i].tarjeta = v === "1"; drawOrderForm(); break;
     case "qty": { const l = draft.lineas[+t.dataset.i]; l.cantidad = Math.max(1, l.cantidad + (+t.dataset.d)); drawOrderForm(); break; }
     case "save-order": saveOrder(); break;
