@@ -47,10 +47,17 @@ const pedSub = p => p.lineas.reduce((a, l) => a + l.cantidad * l.precio, 0);
 /* Envío: "contado" = viene en la factura y el cliente lo paga con el pedido; "contraentrega" = lo paga al recibir y no entra en el total */
 const modoEnvio = p => p.envioModo || (p.envioPaga === "yo" ? "blu" : "contado");
 const pedTotal = p => pedSub(p) + (modoEnvio(p) === "contado" ? (+p.envio || 0) : 0);
+/* Tarifas de Interrapidísimo que maneja Blu, por zona de destino */
+const ZONAS_ENVIO = [
+  { nombre: "Bogotá y alrededores", valor: 8800, ciudades: ["bogota", "bogota dc", "bogota d c", "soacha", "sibate", "mosquera", "funza", "madrid", "facatativa", "bojaca", "el rosal", "subachoque", "tenjo", "tabio", "cota", "chia", "cajica", "zipaquira", "cogua", "nemocon", "tocancipa", "gachancipa", "sopo", "la calera", "guasca", "sesquile", "guatavita", "usme", "suba", "bosa", "kennedy", "engativa", "fontibon", "usaquen", "ciudad bolivar"] },
+  { nombre: "Ciudades intermedias", valor: 12000, ciudades: ["villavicencio", "acacias", "granada", "puerto lopez", "restrepo", "cumaral", "fusagasuga", "girardot", "la mesa", "villeta", "ubate", "choconta", "silvania", "anapoima", "apulo", "tocaima", "agua de dios", "ricaurte", "nilo", "guaduas", "pacho", "gacheta", "medina", "tunja", "duitama", "sogamoso", "chiquinquira", "paipa", "villa de leyva", "moniquira", "garagoa", "puerto boyaca", "ibague", "espinal", "melgar", "honda", "mariquita", "chaparral", "flandes", "guamo", "neiva", "pitalito", "garzon", "la plata", "campoalegre", "yopal", "aguazul", "villanueva", "paz de ariporo"] },
+  { nombre: "Ciudades principales", valor: 18500, ciudades: ["medellin", "envigado", "itagui", "bello", "sabaneta", "la estrella", "caldas", "copacabana", "girardota", "rionegro", "marinilla", "la ceja", "guarne", "cali", "palmira", "jamundi", "yumbo", "candelaria", "tulua", "buga", "cartago", "zarzal", "sevilla", "barranquilla", "soledad", "malambo", "puerto colombia", "cartagena", "turbaco", "santa marta", "cienaga", "bucaramanga", "floridablanca", "giron", "piedecuesta", "barrancabermeja", "san gil", "socorro", "cucuta", "villa del rosario", "los patios", "ocana", "pamplona", "pereira", "dosquebradas", "santa rosa de cabal", "manizales", "chinchina", "villamaria", "la dorada", "armenia", "calarca", "montenegro", "quimbaya", "la tebaida", "pasto", "ipiales", "popayan", "santander de quilichao", "monteria", "cerete", "lorica", "sahagun", "sincelejo", "corozal", "valledupar", "aguachica", "riohacha", "maicao", "florencia", "apartado", "turbo", "caucasia", "magangue", "buenaventura", "tumaco"] },
+];
+const ENVIO_LEJANO = { nombre: "Municipio lejano", valor: 20900 };
 function envioPorCiudad(ciudad) {
-  const c = norm(ciudad); if (!c) return null;
-  const prev = S.pedidos.filter(p => norm(p.ciudad) === c && +p.envio > 0).sort((a, b) => b.fecha.localeCompare(a.fecha) || b.n - a.n)[0];
-  return prev ? { valor: +prev.envio, fecha: prev.fecha } : null;
+  const c = norm(ciudad).replace(/[.,]/g, " ").replace(/\s+/g, " ").trim(); if (!c) return null;
+  const z = ZONAS_ENVIO.find(z => z.ciudades.includes(c)) || ZONAS_ENVIO.find(z => z.ciudades.some(x => c.startsWith(x + " ") || c.endsWith(" " + x)));
+  return z ? { valor: z.valor, zona: z.nombre, seguro: true } : { valor: ENVIO_LEJANO.valor, zona: ENVIO_LEJANO.nombre, seguro: false };
 }
 const pedCosto = p => p.lineas.reduce((a, l) => a + l.cantidad * (l.costo || 0), 0);
 const pedGan = p => pedSub(p) - pedCosto(p) - (p.envioPaga === "yo" ? (+p.envio || 0) : 0);
@@ -474,7 +481,7 @@ function drawOrderForm(focusId) {
   <div class="field"><span class="lbl">Envío</span><div class="seg"><button type="button" data-action="envmodo" data-v="contado" aria-pressed="${d.envioModo === "contado"}">Contado</button><button type="button" data-action="envmodo" data-v="contraentrega" aria-pressed="${d.envioModo === "contraentrega"}">Contraentrega</button></div></div>
   <div class="field"><label for="f_envio">Valor del envío ${d.envioModo === "contraentrega" ? "(lo paga al recibir)" : ""}</label><input id="f_envio" inputmode="numeric" data-f="envio" value="${d.envio || ""}" placeholder="0"></div>
   ${(() => { const e = envioPorCiudad(d.ciudad);
-    return `<div class="row wrap small muted" style="gap:8px;margin-top:-6px">${e ? `<span>Último envío a ${esc(d.ciudad)}: <b>${$(e.valor)}</b> (${fmtDate(e.fecha)})</span>${+d.envio !== e.valor ? `<button class="btn sm ghost" type="button" data-action="usar-envio" data-v="${e.valor}">Usar</button>` : ""}` : d.ciudad ? `<span>No tienes envíos anteriores a ${esc(d.ciudad)}.</span>` : ""}
+    return `<div class="row wrap small muted" style="gap:8px;margin-top:-6px">${e ? `<span>${esc(d.ciudad)}: <b>${esc(e.zona)}</b> · ${$(e.valor)}${e.seguro ? "" : " (no la tengo en la lista, revísala)"}</span>${+d.envio !== e.valor ? `<button class="btn sm ghost" type="button" data-action="usar-envio" data-v="${e.valor}">Usar</button>` : ""}` : ""}
       <a class="buy" href="https://www.interrapidisimo.com/" target="_blank" rel="noopener" style="background:var(--soft);color:var(--pink-press)">Cotizar en Interrapidísimo</a></div>`; })()}
   <div class="field"><span class="lbl">Pago</span><div class="seg" style="grid-template-columns:repeat(3,1fr)">
     <button type="button" data-action="pago" data-v="pagado" aria-pressed="${d.pago === "pagado"}">Pagó todo</button>
@@ -603,7 +610,7 @@ function aplicarOrganizado() {
 }
 let draftPegadoUsado = false;
 
-/* En contraentrega, si no has escrito el valor, se llena con lo que cobró Interrapidísimo la última vez a esa ciudad */
+/* En contraentrega, si no has escrito el valor, se llena con la tarifa de la zona de la ciudad */
 function autoEnvio() {
   if (!draft || draft.envioModo !== "contraentrega" || !draft.envioAuto) return;
   const e = envioPorCiudad(draft.ciudad); draft.envio = e ? e.valor : 0;
