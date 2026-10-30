@@ -191,7 +191,9 @@ function vInicio() {
   <section class="card acct">
     <h3>Cuenta</h3>
     <p class="muted small" style="margin:0">${esc(email)}</p>
+    <button class="btn ghost" type="button" data-action="actualizar">Buscar actualización</button>
     <button class="btn ghost" type="button" data-action="logout">Cerrar sesión</button>
+    <p class="muted small" style="margin:0">Versión ${esc(window.BLU_VERSION || "")}</p>
   </section>`;
 }
 
@@ -800,6 +802,7 @@ document.addEventListener("click", e => {
     case "c-serie": ui.cSerie = v; render(); break;
     case "c-dia": ui.cDia = ui.cDia === v ? "" : v; render(); break;
     case "c-mes": { const [y, m] = ui.cMes.split("-").map(Number); const d = new Date(y, m - 1 + (+t.dataset.d), 1); ui.cMes = d.getFullYear() + "-" + pad(d.getMonth() + 1); ui.cDia = ""; render(); break; }
+    case "actualizar": buscarActualizacion(true); break;
     case "excel": descargarExcel(); break;
     case "respaldo": descargarRespaldo(); break;
     case "logout": sb.auth.signOut().then(() => { S = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [] }; uid = null; iniciar(null); }); break;
@@ -829,6 +832,19 @@ document.addEventListener("change", e => {
   if (t.dataset.cc && editingC) editingC[t.dataset.cc] = t.value;
   if (t.id === "fileImport" && t.files && t.files[0]) importar(t.files[0]);
 });
+
+/* ---------- Actualizaciones: el iPhone guarda la app; si hay versión nueva, se recarga sola ---------- */
+async function buscarActualizacion(avisar) {
+  try {
+    const r = await fetch("version.json?t=" + Date.now(), { cache: "no-store" });
+    const { v } = await r.json();
+    if (v && v !== window.BLU_VERSION) { location.replace("./?v=" + v); return true; }
+    if (avisar) toast("Ya tienes la última versión");
+  } catch (e) { if (avisar) toast("No se pudo revisar. Revisa tu conexión"); }
+  return false;
+}
+buscarActualizacion(false);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") buscarActualizacion(false); });
 
 /* ---------- Arranque ---------- */
 sb.auth.getSession().then(({ data }) => iniciar(data.session));
