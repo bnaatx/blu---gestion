@@ -8,6 +8,12 @@ const EST_LABEL = { pendiente: "Pedido pendiente", empacado: "Empacado", enviado
 const PAGO_LABEL = { pendiente: "Pago pendiente", abono: "Apartado", pagado: "Pagado" };
 const pagoDe = p => p.pago || (p.pagado ? "pagado" : "pendiente");
 const saldo = p => pagoDe(p) === "pagado" ? 0 : Math.max(0, pedTotal(p) - (pagoDe(p) === "abono" ? (+p.abono || 0) : 0));
+/* Un pedido solo es "Pedido pendiente" cuando ya está pagado completo; antes es Apartado (con abono) o Pago pendiente */
+const etapa = p => p.estado === "pendiente" && pagoDe(p) !== "pagado" ? (pagoDe(p) === "abono" ? "apartado" : "pagopend") : p.estado;
+const ETAPA_LABEL = { apartado: "Apartado", pagopend: "Pago pendiente" };
+const ETAPA_CLASE = { apartado: "pg-abono", pagopend: "pg-pendiente" };
+const etLabel = k => ETAPA_LABEL[k] || EST_LABEL[k];
+const etClase = k => ETAPA_CLASE[k] || "st-" + k;
 const INV_CATS = ["Mercancía", "Insumos", "Empaques", "Publicidad", "Envíos", "Otros"];
 const NEXT_LABEL = { pendiente: "Marcar empacado", empacado: "Marcar enviado", enviado: "Marcar entregado", perdido: "Marcar reenviado" };
 const TIPOS = ["Pulsera", "Manilla individual", "Manillas parejas", "Manillas trios", "Cadenita individual", "Cadenitas parejas", "Collar individual", "Collares pareja", "Anillos", "Anillos pareja"];
@@ -161,7 +167,7 @@ function render() {
 function vInicio() {
   const d = new Date(), ym = d.getFullYear() + "-" + pad(d.getMonth() + 1);
   const vacio = !S.productos.length && !S.pedidos.length && !S.materia.length;
-  const cuenta = e => S.pedidos.filter(p => p.estado === e && (e !== "entregado" || p.fecha.startsWith(ym))).length;
+  const cuenta = e => S.pedidos.filter(p => etapa(p) === e && (e !== "entregado" || p.fecha.startsWith(ym))).length;
   const mes = S.pedidos.filter(p => p.estado === "entregado" && p.fecha.startsWith(ym));
   const vendido = mes.reduce((a, p) => a + pedSub(p), 0), costo = mes.reduce((a, p) => a + pedCosto(p), 0), gan = mes.reduce((a, p) => a + pedGan(p), 0);
   const act = activos(), uno = act.filter(p => p.stock === 1), agot = act.filter(p => p.stock <= 0);
@@ -224,17 +230,19 @@ function orderCard(p, opts = {}) {
   return `<article class="card order">
     <div class="row between" style="align-items:flex-start">
       <div class="grow"><div class="who">${esc(p.cliente)}</div><div class="muted small">#${p.n} · ${fmtDate(p.fecha)} · ${esc(p.ciudad)}</div></div>
-      <span class="pill st-${p.estado}">${EST_LABEL[p.estado]}</span>
+      <span class="pill ${etClase(etapa(p))}">${etLabel(etapa(p))}</span>
     </div>
     ${opts.track && p.estado !== "perdido" ? `<div class="track" aria-hidden="true">${ESTADOS.map((e, k) => `<i class="${k <= i ? "on" : ""}"></i>`).join("")}</div>` : ""}
     <div class="items">${p.lineas.map(l => `<div class="it"><div class="it-main"><span class="qty">${l.cantidad}</span><div class="grow"><b>${esc(l.nombre)}</b><div class="muted small">${esc(l.tipo)}${l.cantidad > 1 ? " · " + $(l.precio) + " c/u" : ""}${l.nota ? " · " + esc(l.nota) : ""}</div>${l.tarjeta ? '<span class="tag card-tag">💌 Tarjeta personalizada</span>' : ""}</div></div><span class="num">${$(l.cantidad * l.precio)}</span></div>`).join("")}
       ${p.envio || modoEnvio(p) === "contraentrega" ? `<div class="muted"><span>Envío ${modoEnvio(p) === "contraentrega" ? "contraentrega · lo paga al recibir" : modoEnvio(p) === "blu" ? "· lo pagó Blu" : "contado"}</span><span class="num">${p.envio ? $(p.envio) : "—"}</span></div>` : ""}</div>
     <div class="row between wrap">
-      <div class="row wrap" style="gap:6px">${pagoDe(p) !== "pagado" ? `<span class="pill pg-${pagoDe(p)}">${PAGO_LABEL[pagoDe(p)]}</span>` : ""}${p.precioTipo === "mayor" ? '<span class="pill wa-mayorista">Cliente mayorista</span>' : ""}${p.importado ? '<span class="tag">Del Excel</span>' : ""}</div>
+      <div class="row wrap" style="gap:6px">${pagoDe(p) !== "pagado" && p.estado !== "pendiente" ? `<span class="pill pg-${pagoDe(p)}">${PAGO_LABEL[pagoDe(p)]}</span>` : ""}${p.precioTipo === "mayor" ? '<span class="pill wa-mayorista">Cliente mayorista</span>' : ""}${p.importado ? '<span class="tag">Del Excel</span>' : ""}</div>
       <div style="text-align:right"><span class="money">${$(pedTotal(p))}</span>${saldo(p) && saldo(p) < pedTotal(p) ? `<div class="small muted">Abonó ${$(p.abono)} · debe ${$(saldo(p))}</div>` : saldo(p) ? `<div class="small" style="color:var(--loss)">Debe ${$(saldo(p))}</div>` : ""}</div>
     </div>
     ${opts.actions ? `<div class="row" style="gap:8px">
-      <button class="btn grow" type="button" data-action="avanzar" data-id="${p.id}">${NEXT_LABEL[p.estado]}</button>
+      ${etapa(p) === "apartado" || etapa(p) === "pagopend"
+        ? `<button class="btn grow" type="button" data-action="pago-completo" data-id="${p.id}">Ya pagó todo</button>`
+        : `<button class="btn grow" type="button" data-action="avanzar" data-id="${p.id}">${NEXT_LABEL[p.estado]}</button>`}
       <button class="btn ghost" type="button" data-action="ver" data-id="${p.id}">Detalle</button></div>` : ""}
     ${opts.detalle ? `<button class="btn ghost sm" type="button" data-action="ver" data-id="${p.id}" style="align-self:flex-start">Detalle</button>` : ""}
   </article>`;
@@ -242,9 +250,9 @@ function orderCard(p, opts = {}) {
 function vPedidos() {
   const f = ui.pedFiltro;
   const act = S.pedidos.filter(p => p.estado !== "entregado");
-  const lista = (f === "activos" ? act : act.filter(p => p.estado === f)).slice().sort((a, b) => b.n - a.n);
-  const filtros = [["activos", "Todos (" + act.length + ")"], ...["pendiente", "empacado", "enviado", "perdido"].map(e => [e, EST_LABEL[e] + " (" + act.filter(p => p.estado === e).length + ")"]).filter(([k, l]) => k !== "perdido" || !l.endsWith("(0)"))];
-  return `<div class="scroller">${filtros.map(([k, l]) => `<button class="chip" type="button" data-action="filtro-ped" data-v="${k}" aria-pressed="${f === k}">${l}</button>`).join("")}</div>
+  const lista = (f === "activos" ? act : act.filter(p => etapa(p) === f)).slice().sort((a, b) => b.n - a.n);
+  const filtros = [["activos", "Todos (" + act.length + ")"], ...["apartado", "pagopend", "pendiente", "empacado", "enviado", "perdido"].map(e => [e, etLabel(e) + " (" + act.filter(p => etapa(p) === e).length + ")"]).filter(([k, l]) => k !== "perdido" || !l.endsWith("(0)"))];
+  return `<div class="scroller">${filtros.map(([k, l]) => `<button class="chip wa-chip ${k === "activos" ? "" : etClase(k)}" type="button" data-action="filtro-ped" data-v="${k}" aria-pressed="${f === k}">${l}</button>`).join("")}</div>
   <div class="list">${lista.length ? lista.map(p => orderCard(p, { track: true, actions: true })).join("") :
     `<div class="empty"><div class="iso"></div><b>No hay pedidos aquí</b><span class="small">Toca “Nuevo pedido” para registrar uno. Cuando lo marques como entregado pasa a Ventas.</span></div>`}</div>`;
 }
@@ -258,7 +266,7 @@ function cumple(p, f) {
   if (f === "apartado") return pagoDe(p) === "abono";
   if (f === "pagopend") return pagoDe(p) === "pendiente";
   if (f === "mayorista") return p.precioTipo === "mayor";
-  return p.estado === f;
+  return etapa(p) === f;
 }
 function vVentas() {
   const seg = `<div class="seg" role="group" aria-label="Ventas"><button type="button" data-action="v-seg" data-v="ventas" aria-pressed="${ui.ventasSeg === "ventas"}">Ventas</button><button type="button" data-action="v-seg" data-v="invertido" aria-pressed="${ui.ventasSeg === "invertido"}">Invertido</button></div>`;
@@ -798,6 +806,7 @@ document.addEventListener("click", e => {
     case "organizar": aplicarOrganizado(); break;
     case "pegar": navigator.clipboard.readText().then(txt => { if (!txt) { toast("No hay nada copiado"); return; } draft.pegado = txt; aplicarOrganizado(); })
       .catch(() => toast("No se pudo pegar. Mantén presionado el cuadro y toca Pegar")); break;
+    case "pago-completo": { const p = S.pedidos.find(x => x.id === t.dataset.id); p.pago = "pagado"; p.pagado = true; p.abono = 0; guardar("pedidos", p); render(); toast("Pedido #" + p.n + " pagado · pasó a Pedido pendiente"); break; }
     case "avanzar": { const p = S.pedidos.find(x => x.id === t.dataset.id); p.estado = p.estado === "perdido" ? "enviado" : ESTADOS[ESTADOS.indexOf(p.estado) + 1]; guardar("pedidos", p); render();
       toast(p.estado === "entregado" ? "Pedido #" + p.n + " entregado · pasó a Ventas" : "Pedido #" + p.n + ": " + EST_LABEL[p.estado].toLowerCase()); break; }
     case "ver": verPedido(t.dataset.id); break;
