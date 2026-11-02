@@ -272,3 +272,11 @@ button,a,input,select,textarea,label{touch-action:manipulation}
 .canal-whatsapp{background:#E3F6EA;color:#1C7A43}
 .canal-instagram{background:#FBE4F0;color:#B0306E}
 .chip.wa-chip.whatsapp{--dot:#25D366}.chip.wa-chip.instagram{--dot:#D62976}
+
+/* iPhone: el campo de fecha tiene un ancho mínimo propio que se montaba sobre la casilla del lado */
+.field{min-width:0}
+.grid2,.grid3{grid-template-columns:repeat(var(--cols,2),minmax(0,1fr))}
+.grid3{--cols:3}
+@media (max-width:380px){.grid3{--cols:2}}
+input[type="date"],input[type="time"]{-webkit-appearance:none;appearance:none;display:block;width:100%;min-width:0;max-width:100%;text-align:left;min-height:44px;background:var(--white)}
+input[type="date"]::-webkit-date-and-time-value,input[type="time"]::-webkit-date-and-time-value{text-align:left}
