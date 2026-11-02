@@ -548,20 +548,33 @@ const CIUDADES = ["bogota", "medellin", "cali", "barranquilla", "cartagena", "bu
 const RX_DIR = /^(cra|cr|kra|kr|carrera|calle|cll|cl|clle|av|avda|avenida|ak|ac|diagonal|diag|dg|transversal|transv|trans|tv|tr|mz|manzana|vereda|km|kilometro|conjunto|edificio|torre|apto|apartamento|casa|barrio|urbanizacion|urb|interrapidisimo|punto|oficina)\b/i;
 function organizar(texto) {
   const out = {}, libres = [];
-  let lineas = String(texto || "").replace(/\r/g, "").split("\n").map(l => l.replace(/^[\s•\-–*·>]+/, "").trim()).filter(Boolean);
-  if (lineas.length === 1) lineas = lineas[0].split(/\s*[,;]\s*/).filter(Boolean);
+  let lineas = String(texto || "").replace(/\r/g, "").replace(/[​-‏⁠﻿*_~]/g, "").split("\n").map(l => l.replace(/^[\s•\-–·>✨💗💖❤️🩷📍📌🏠🏡📱☎️🪪👤]+/u, "").trim()).filter(Boolean);
+  if (lineas.length === 1) lineas = (/:/.test(lineas[0]) ? lineas[0].split(/\s*;\s*|\s*,\s*(?=[a-záéíóúñ ]{3,25}\s*:)/i) : lineas[0].split(/\s*[,;]\s*/)).filter(Boolean);
+  // Etiquetas con o sin dos puntos, en cualquier orden: "Ciudad Itagüí", "Nombre completo: Ana", "Número de documento 104..."
+  const SEP = "(?:\\s+de\\s+(?:env[ií]o|entrega|destino|residencia))?(?:\\s+completos?|\\s+completas?)?\\s*(?:[:\\-–=.]\\s*|\\s+)";
+  const R = (palabras) => new RegExp("^(?:" + palabras + ")" + SEP, "i");
   const etiquetas = [
-    [/^(nombre( completo)?|cliente|destinatario)\s*[:\-]\s*/i, "cliente"],
-    [/^(ciudad|municipio)\s*[:\-]\s*/i, "ciudad"],
-    [/^(direcci[oó]n|dir)\s*[:\-]\s*/i, "direccion"],
-    [/^(barrio)\s*[:\-]\s*/i, "barrio"],
-    [/^(cel(ular)?|tel([eé]fono)?|whatsapp|n[uú]mero)\s*[:\-]\s*/i, "celular"],
-    [/^(c[eé]dula|cc|c\.c\.?|documento|doc|identificaci[oó]n|nit)\s*[:\-.]?\s*/i, "cc"],
+    [R("n[uú]mero\\s+de\\s+(?:documento|c[eé]dula|identificaci[oó]n)|c[eé]dula(?:\\s+de\\s+ciudadan[ií]a)?|c\\.?\\s?c\\.?|documento(?:\\s+de\\s+identidad)?|identificaci[oó]n|nit|doc"), "cc"],
+    [R("n[uú]mero\\s+de\\s+(?:celular|tel[eé]fono|contacto|whatsapp|cel)|n[uú]mero\\s+celular|celular|cel|tel[eé]fono|tel|whatsapp|contacto|m[oó]vil"), "celular"],
+    [R("nombres?\\s+y\\s+apellidos?|nombres?(?:\\s+de\\s+quien\\s+recibe)?|cliente|destinatari[oa]|quien\\s+recibe|recibe|a\\s+nombre\\s+de"), "cliente"],
+    [R("ciudad(?:\\s*(?:y|\\/)\\s*(?:departamento|depto))?|municipio(?:\\s*(?:y|\\/)\\s*departamento)?"), "ciudad"],
+    [R("direcci[oó]n|dir"), "direccion"],
+    [R("barrio"), "barrio"],
+    [R("departamento|depto"), "depto"],
+    [R("n[uú]mero"), "numero"],
   ];
   for (const l of lineas) {
     const et = etiquetas.find(([rx]) => rx.test(l));
     if (et) { const v = l.replace(et[0], "").trim(); if (!v) continue;
-      if (et[1] === "barrio") out.barrio = v; else if (et[1] === "celular" || et[1] === "cc") out[et[1]] = v.replace(/[^\d]/g, ""); else out[et[1]] = v; continue; }
+      const k = et[1], dig = v.replace(/[^\d]/g, "");
+      if (k === "depto") continue;
+      if (k === "barrio") out.barrio = v;
+      else if (k === "cc") out.cc = dig;
+      else if (k === "celular") out.celular = dig.replace(/^57(?=3\d{9}$)/, "");
+      else if (k === "numero") { const n = dig.replace(/^57(?=3\d{9}$)/, ""); if (/^3\d{9}$/.test(n) && !out.celular) out.celular = n; else out.cc = out.cc || dig; }
+      else if (k === "ciudad") out.ciudad = v.split(/\s*[,(]\s*|\s+[-–]\s+/)[0].trim();
+      else out[k] = v;
+      continue; }
     const dig = l.replace(/[\s.\-()+]/g, "");
     if (/^\d{6,13}$/.test(dig)) {
       const n = dig.replace(/^57(?=3\d{9}$)/, "");
