@@ -549,7 +549,7 @@ const RX_DIR = /^(cra|cr|kra|kr|carrera|calle|cll|cl|clle|av|avda|avenida|ak|ac|
 function organizar(texto) {
   const out = {}, libres = [];
   let lineas = String(texto || "").replace(/\r/g, "").replace(/[​-‏⁠﻿*_~]/g, "").split("\n").map(l => l.replace(/^[\s•\-–·>✨💗💖❤️🩷📍📌🏠🏡📱☎️🪪👤]+/u, "").trim()).filter(Boolean);
-  if (lineas.length === 1) lineas = (/:/.test(lineas[0]) ? lineas[0].split(/\s*;\s*|\s*,\s*(?=[a-záéíóúñ ]{3,25}\s*:)/i) : lineas[0].split(/\s*[,;]\s*/)).filter(Boolean);
+  if (lineas.length === 1) lineas = (/:/.test(lineas[0]) ? lineas[0].split(/\s*;\s*|\s*,\s*(?=[a-záéíóúñ. ]{2,25}\s*:)/i) : lineas[0].split(/\s*[,;]\s*/)).filter(Boolean);
   // Etiquetas con o sin dos puntos, en cualquier orden: "Ciudad Itagüí", "Nombre completo: Ana", "Número de documento 104..."
   const SEP = "(?:\\s+de\\s+(?:env[ií]o|entrega|destino|residencia))?(?:\\s+completos?|\\s+completas?)?\\s*(?:[:\\-–=.]\\s*|\\s+)";
   const R = (palabras) => new RegExp("^(?:" + palabras + ")" + SEP, "i");
