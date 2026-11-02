@@ -43,7 +43,8 @@ const isoDate = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d
 const today = () => isoDate(new Date());
 const fmtDate = s => { if (!s) return ""; const [y, m, d] = s.split("-"); return `${+d} ${MESES[+m - 1].slice(0, 3)} ${y}`; };
 const norm = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
-const num = v => Math.max(0, parseInt(String(v).replace(/[^\d]/g, ""), 10) || 0);
+const num = v => { let s = String(v ?? "").trim().replace(/[^\d.,]/g, ""); s = s.replace(/[.,]\d{1,2}$/, ""); return Math.max(0, parseInt(s.replace(/[^\d]/g, ""), 10) || 0); };
+const miles = n => n ? Number(n).toLocaleString("es-CO") : "";
 const serie = id => SERIES.find(s => s.id === id) || SERIES[SERIES.length - 1];
 const serStyle = id => { const s = serie(id); return `--sc:${s.sc};--si:${s.si}`; };
 const safeUrl = u => /^https?:\/\//i.test(String(u || "").trim()) ? String(u).trim() : "";
@@ -355,7 +356,7 @@ function editInv(id) {
   openSheet(nuevo ? "Registrar compra" : "Editar compra", `
     <div class="field"><label for="iv_desc">Qué compraste</label><input id="iv_desc" data-iv="descripcion" value="${esc(i.descripcion)}" placeholder="Ej: Pedido SHEIN de dijes y cadenas"></div>
     <div class="grid2"><div class="field"><label for="iv_fecha">Fecha</label><input id="iv_fecha" type="date" data-iv="fecha" value="${esc(i.fecha)}"></div>
-      <div class="field"><label for="iv_valor">Valor total</label><input id="iv_valor" inputmode="numeric" data-iv="valor" value="${i.valor || ""}" placeholder="0"></div></div>
+      <div class="field"><label for="iv_valor">Valor total</label><input id="iv_valor" inputmode="numeric" data-iv="valor" value="${miles(i.valor)}" placeholder="0" class="money-in"></div></div>
     <div class="grid2"><div class="field"><label for="iv_cat">Categoría</label><select id="iv_cat" data-iv="categoria">${INV_CATS.map(c => `<option ${c === i.categoria ? "selected" : ""}>${c}</option>`).join("")}</select></div>
       <div class="field"><label for="iv_lugar">Dónde</label><input id="iv_lugar" data-iv="lugar" value="${esc(i.lugar)}" placeholder="SHEIN, Santorini…"></div></div>
     <div class="field"><label for="iv_det">Detalle (opcional)</label><textarea id="iv_det" data-iv="detalle" rows="3" placeholder="Qué incluía la compra">${esc(i.detalle)}</textarea></div>
@@ -482,7 +483,7 @@ function openSheet(title, html, onMount) {
   document.body.style.overflow = "hidden";
   onMount && onMount(sheetRoot.querySelector(".sheet"));
 }
-function closeSheet() { sheetRoot.innerHTML = ""; document.body.style.overflow = ""; draft = null; editing = null; editingMat = null; editingC = null; editingInv = null; }
+function closeSheet() { editPed = null; sheetRoot.innerHTML = ""; document.body.style.overflow = ""; draft = null; editing = null; editingMat = null; editingC = null; editingInv = null; }
 
 /* Nuevo pedido */
 let draft = null;
@@ -520,11 +521,11 @@ function drawOrderForm(focusId) {
     <div class="row" style="gap:10px;align-items:flex-start">${thumb(prodDe(l.codigo))}<div><b>${esc(l.nombre)}</b><div class="muted small">${esc(l.tipo)}${l.nota ? " · " + esc(l.nota) : ""}</div></div></div>
     <button class="icon-btn" type="button" data-action="del-line" data-i="${i}" aria-label="Quitar ${esc(l.nombre)}">×</button>
     <div class="ctl"><span class="lbl">Cantidad</span><div class="stepper"><button class="icon-btn" type="button" data-action="qty" data-i="${i}" data-d="-1" aria-label="Menos">−</button><b>${l.cantidad}</b><button class="icon-btn" type="button" data-action="qty" data-i="${i}" data-d="1" aria-label="Más">+</button></div>
-    <span class="muted small" style="margin-left:auto">c/u</span><input id="lp_${i}" inputmode="numeric" data-lp="${i}" value="${l.precio}" aria-label="Precio por unidad de ${esc(l.nombre)}"></div>
+    <span class="muted small" style="margin-left:auto">c/u</span><input id="lp_${i}" inputmode="numeric" data-lp="${i}" value="${miles(l.precio)}" class="money-in" aria-label="Precio por unidad de ${esc(l.nombre)}"></div>
     <div class="ctl"><span class="lbl">Tarjeta personalizada</span><div class="seg mini" role="group" aria-label="Tarjeta personalizada para ${esc(l.nombre)}" style="margin-left:auto"><button type="button" data-action="tarjeta" data-i="${i}" data-v="1" aria-pressed="${!!l.tarjeta}">Sí</button><button type="button" data-action="tarjeta" data-i="${i}" data-v="0" aria-pressed="${!l.tarjeta}">No</button></div></div></div>`).join("")}</div>` : ""}
   ${faltan.length ? `<div class="warn">No alcanza el stock de: ${faltan.map(l => esc(l.nombre)).join(", ")}. Puedes guardarlo igual; el inventario quedará en negativo hasta que las fabriques.</div>` : ""}
   <div class="field"><span class="lbl">Envío</span><div class="seg"><button type="button" data-action="envmodo" data-v="contado" aria-pressed="${d.envioModo === "contado"}">Contado</button><button type="button" data-action="envmodo" data-v="contraentrega" aria-pressed="${d.envioModo === "contraentrega"}">Contraentrega</button></div></div>
-  <div class="field"><label for="f_envio">Valor del envío ${d.envioModo === "contraentrega" ? "(lo paga al recibir)" : ""}</label><input id="f_envio" inputmode="numeric" data-f="envio" value="${d.envio || ""}" placeholder="0"></div>
+  <div class="field"><label for="f_envio">Valor del envío ${d.envioModo === "contraentrega" ? "(lo paga al recibir)" : ""}</label><input id="f_envio" inputmode="numeric" data-f="envio" value="${miles(d.envio)}" placeholder="0" class="money-in"></div>
   ${(() => { const e = envioPorCiudad(d.ciudad);
     return `<div class="row wrap small muted" style="gap:8px;margin-top:-6px">${e ? `<span>${esc(d.ciudad)}: <b>${esc(e.zona)}</b> · ${$(e.valor)}${e.seguro ? "" : " (no la tengo en la lista, revísala)"}</span>${+d.envio !== e.valor ? `<button class="btn sm ghost" type="button" data-action="usar-envio" data-v="${e.valor}">Usar</button>` : ""}` : ""}
       <a class="buy" href="https://www.interrapidisimo.com/" target="_blank" rel="noopener" style="background:var(--soft);color:var(--pink-press)">Cotizar en Interrapidísimo</a></div>`; })()}
@@ -532,7 +533,7 @@ function drawOrderForm(focusId) {
     <button type="button" data-action="pago" data-v="pagado" aria-pressed="${d.pago === "pagado"}">Pagó todo</button>
     <button type="button" data-action="pago" data-v="abono" aria-pressed="${d.pago === "abono"}">Abonó</button>
     <button type="button" data-action="pago" data-v="pendiente" aria-pressed="${d.pago === "pendiente"}">No ha pagado</button></div></div>
-  ${d.pago === "abono" ? `<div class="field"><label for="f_abono">Valor del abono</label><input id="f_abono" inputmode="numeric" data-f="abono" value="${d.abono || ""}" placeholder="${Math.round(pedTotal(d) / 2)}"></div>` : ""}
+  ${d.pago === "abono" ? `<div class="field"><label for="f_abono">Valor del abono</label><input id="f_abono" inputmode="numeric" data-f="abono" value="${miles(d.abono)}" class="money-in" placeholder="${Math.round(pedTotal(d) / 2)}"></div>` : ""}
   <div class="totals"><div><span>Productos</span><span>${$(pedSub(d))}</span></div>
     ${d.envio ? `<div><span>Envío ${d.envioModo === "contraentrega" ? "(contraentrega, no se suma)" : "contado"}</span><span>${d.envioModo === "contraentrega" ? "—" : $(d.envio)}</span></div>` : ""}
     <div class="t"><span>Total a cobrar</span><span>${$(pedTotal(d))}</span></div>
@@ -672,7 +673,9 @@ function saveOrder() {
 function verPedido(id) {
   const p = S.pedidos.find(x => x.id === id); if (!p) return;
   const prev = p.estado === "perdido" ? null : ESTADOS[ESTADOS.indexOf(p.estado) - 1];
+  editPed = { id: p.id, lineas: p.lineas.map(l => ({ ...l })), abierto: false };
   openSheet("Pedido #" + p.n, `${orderCard(p, { track: true })}
+    <div id="editLineas"></div>
     <div class="card" style="display:grid;gap:6px;font-size:14px">
       <div><span class="muted small">Celular</span><br>${esc(p.celular) || "—"}</div>
       <div><span class="muted small">Cédula</span><br>${esc(p.cc) || "—"}</div>
@@ -681,10 +684,25 @@ function verPedido(id) {
     <div class="field"><span class="lbl">Llegó por</span><div class="seg">${Object.keys(CANALES).map(k => `<button type="button" data-action="set-canal" data-id="${p.id}" data-v="${k}" aria-pressed="${canalDe(p) === k}">${CANALES[k]}</button>`).join("")}</div></div>
     <div class="field"><span class="lbl">Pago</span><div class="seg" style="grid-template-columns:repeat(3,1fr)">
       ${["pagado", "abono", "pendiente"].map(k => `<button type="button" data-action="set-pago" data-id="${p.id}" data-v="${k}" aria-pressed="${pagoDe(p) === k}">${{ pagado: "Pagó todo", abono: "Abonó", pendiente: "No ha pagado" }[k]}</button>`).join("")}</div></div>
-    ${pagoDe(p) === "abono" ? `<div class="field"><label for="d_abono">Valor del abono</label><input id="d_abono" inputmode="numeric" data-abono="${p.id}" value="${p.abono || ""}"></div>` : ""}
+    ${pagoDe(p) === "abono" ? `<div class="field"><label for="d_abono">Valor del abono</label><input id="d_abono" inputmode="numeric" data-abono="${p.id}" value="${miles(p.abono)}" class="money-in"></div>` : ""}
     ${p.estado === "enviado" ? `<button class="btn block ghost" type="button" data-action="perdido" data-id="${p.id}" style="color:var(--loss)">Marcar envío perdido</button>` : ""}
     ${prev ? `<button class="btn block ghost" type="button" data-action="retroceder" data-id="${p.id}">Devolver a ${EST_LABEL[prev].toLowerCase()}</button>` : ""}
-    <div id="cancelBox"><button class="btn block danger" type="button" data-action="cancel-ask" data-id="${p.id}">${p.estado === "entregado" ? "Borrar venta" : "Cancelar pedido"}</button></div>`);
+    <div id="cancelBox"><button class="btn block danger" type="button" data-action="cancel-ask" data-id="${p.id}">${p.estado === "entregado" ? "Borrar venta" : "Cancelar pedido"}</button></div>`, () => drawEditLineas());
+}
+let editPed = null;
+function drawEditLineas() {
+  const box = $id("editLineas"); if (!box || !editPed) return;
+  if (!editPed.abierto) { box.innerHTML = `<button class="btn block line" type="button" data-action="edit-lineas">Cambiar productos o precios</button>`; return; }
+  const sub = editPed.lineas.reduce((s, l) => s + l.cantidad * l.precio, 0);
+  box.innerHTML = `<div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <h3>Productos de este pedido</h3>
+    <p class="muted small" style="margin:0">El precio que cambies aquí aplica solo a este pedido. El catálogo no cambia.</p>
+    ${editPed.lineas.map((l, i) => `<div class="line-item">
+      <div><b>${esc(l.nombre)}</b><div class="muted small">${esc(l.tipo)}</div></div><span></span>
+      <div class="ctl"><span class="lbl">Cantidad</span><div class="stepper"><button class="icon-btn" type="button" data-action="eq" data-i="${i}" data-d="-1" aria-label="Menos">−</button><b>${l.cantidad}</b><button class="icon-btn" type="button" data-action="eq" data-i="${i}" data-d="1" aria-label="Más">+</button></div>
+      <span class="muted small" style="margin-left:auto">c/u</span><input id="ep_${i}" inputmode="numeric" class="money-in" data-ep="${i}" value="${miles(l.precio)}" aria-label="Precio por unidad de ${esc(l.nombre)}"></div></div>`).join("")}
+    <div class="totals"><div class="t"><span>Productos</span><span id="epSub">${$(sub)}</span></div></div>
+    <div class="row" style="gap:8px"><button class="btn grow" type="button" data-action="save-lineas">Guardar cambios</button><button class="btn ghost" type="button" data-action="cancel-lineas">Cancelar</button></div></div>`;
 }
 
 /* Producto */
@@ -692,7 +710,7 @@ let editing = null;
 function editProd(codigo) {
   const nuevo = codigo == null;
   const p = nuevo ? { codigo: Math.max(100, ...S.productos.map(x => x.codigo)) + 1, nombre: "", tipo: TIPOS[1], hilo: 0, dije: 0, mostacillas: 0, compra: 0, manoObra: 0, empaque: 2815, mayor: 0, menor: 0, stock: 0, remodelacion: "pendiente" } : { ...S.productos.find(x => x.codigo === codigo) };
-  const f = (k, l) => `<div class="field"><label for="pp_${k}">${l}</label><input id="pp_${k}" inputmode="numeric" data-pp="${k}" value="${p[k] || ""}" placeholder="0"></div>`;
+  const f = (k, l) => `<div class="field"><label for="pp_${k}">${l}</label><input id="pp_${k}" inputmode="numeric" data-pp="${k}" value="${k === "stock" ? (p[k] || "") : miles(p[k])}" placeholder="0"${k === "stock" ? "" : ' class="money-in"'}></div>`;
   openSheet(nuevo ? "Nuevo producto" : "Editar producto", `
     <div class="foto-edit" id="ppFoto"></div>
     <div class="field"><label for="pp_nombre">Nombre</label><input id="pp_nombre" data-pp="nombre" value="${esc(p.nombre)}"></div>
@@ -728,7 +746,7 @@ function editMat(id) {
     <div class="field"><label for="mm_nombre">Nombre</label><input id="mm_nombre" data-mm="nombre" value="${esc(m.nombre)}"></div>
     <div class="field"><label for="mm_lugar">Dónde se compra</label><input id="mm_lugar" data-mm="lugar" value="${esc(m.lugar)}"></div>
     <div class="grid2"><div class="field"><label for="mm_cantidad">Cantidad</label><input id="mm_cantidad" inputmode="numeric" data-mm="cantidad" value="${m.cantidad || ""}"></div>
-    <div class="field"><label for="mm_precio">Precio total</label><input id="mm_precio" inputmode="numeric" data-mm="precio" value="${m.precio || ""}"></div></div>
+    <div class="field"><label for="mm_precio">Precio total</label><input id="mm_precio" inputmode="numeric" data-mm="precio" value="${miles(m.precio)}" class="money-in"></div></div>
     <div class="field"><label for="mm_link">Link de compra</label><input id="mm_link" type="url" data-mm="link" value="${esc(m.link)}" placeholder="https://"></div>
     ${url ? `<a class="buy" style="align-self:flex-start" href="${esc(url)}" target="_blank" rel="noopener">Abrir link de compra</a>` : ""}
     <button class="btn block" type="button" data-action="save-mat">Guardar</button>`, () => { editingMat = m; });
@@ -848,6 +866,13 @@ document.addEventListener("click", e => {
     case "del-line": draft.lineas.splice(+t.dataset.i, 1); drawOrderForm(); break;
     case "canal": draft.canal = v; drawOrderForm(); break;
     case "set-canal": { const p = S.pedidos.find(x => x.id === t.dataset.id); p.canal = v; guardar("pedidos", p); render(); verPedido(p.id); break; }
+    case "edit-lineas": editPed.abierto = true; drawEditLineas(); break;
+    case "cancel-lineas": { const p = S.pedidos.find(x => x.id === editPed.id); editPed = { id: p.id, lineas: p.lineas.map(l => ({ ...l })), abierto: false }; drawEditLineas(); break; }
+    case "eq": { const l = editPed.lineas[+t.dataset.i]; l.cantidad = Math.max(1, l.cantidad + (+t.dataset.d)); drawEditLineas(); break; }
+    case "save-lineas": { const p = S.pedidos.find(x => x.id === editPed.id);
+      if (!p.importado) editPed.lineas.forEach((l, i) => { const antes = p.lineas[i], pr = S.productos.find(x => x.codigo === l.codigo);
+        if (pr && antes && l.cantidad !== antes.cantidad) { pr.stock -= (l.cantidad - antes.cantidad); guardar("productos", pr); } });
+      p.lineas = editPed.lineas.map(l => ({ ...l })); guardar("pedidos", p); render(); verPedido(p.id); toast("Pedido #" + p.n + " actualizado"); break; }
     case "tarjeta": draft.lineas[+t.dataset.i].tarjeta = v === "1"; drawOrderForm(); break;
     case "qty": { const l = draft.lineas[+t.dataset.i]; l.cantidad = Math.max(1, l.cantidad + (+t.dataset.d)); drawOrderForm(); break; }
     case "save-order": saveOrder(); break;
@@ -922,11 +947,13 @@ document.addEventListener("keydown", e => {
 });
 document.addEventListener("input", e => {
   const t = e.target;
+  if (t.classList && t.classList.contains("money-in")) { const n = num(t.value), f = miles(n); if (t.value !== f) { t.value = f; try { t.setSelectionRange(f.length, f.length); } catch (er) { } } }
   if (t.dataset.input) { ui[t.dataset.input] = t.value; clearTimeout(window._bt); const id = t.id; window._bt = setTimeout(() => { render(); const el = $id(id); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 180); return; }
   if (t.dataset.f && draft) { const k = t.dataset.f; draft[k] = (k === "envio" || k === "abono") ? num(t.value) : t.value;
     if (k === "envio") draft.envioAuto = false;
     if (k === "ciudad") { clearTimeout(window._ct); window._ct = setTimeout(() => { if (!draft) return; autoEnvio(); drawOrderForm("f_ciudad"); }, 500); }
     if (k === "q" || k === "envio" || k === "abono") drawOrderForm(t.id); return; }
+  if (t.dataset.ep && editPed) { editPed.lineas[+t.dataset.ep].precio = num(t.value); const s = $id("epSub"); if (s) s.textContent = $(editPed.lineas.reduce((a, l) => a + l.cantidad * l.precio, 0)); return; }
   if (t.dataset.lp && draft) { draft.lineas[+t.dataset.lp].precio = num(t.value); drawOrderForm(t.id); return; }
   if (t.dataset.pp && editing) { const k = t.dataset.pp; editing[k] = (k === "nombre" || k === "tipo") ? t.value : (k === "stock" ? (parseInt(t.value, 10) || 0) : num(t.value)); drawProdTot(); return; }
   if (t.dataset.mm && editingMat) { const k = t.dataset.mm; editingMat[k] = (k === "cantidad" || k === "precio") ? num(t.value) : t.value; return; }
