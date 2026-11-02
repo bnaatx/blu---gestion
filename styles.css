@@ -280,3 +280,6 @@ button,a,input,select,textarea,label{touch-action:manipulation}
 @media (max-width:380px){.grid3{--cols:2}}
 input[type="date"],input[type="time"]{-webkit-appearance:none;appearance:none;display:block;width:100%;min-width:0;max-width:100%;text-align:left;min-height:44px;background:var(--white)}
 input[type="date"]::-webkit-date-and-time-value,input[type="time"]::-webkit-date-and-time-value{text-align:left}
+
+/* Listas largas: el navegador no pinta lo que está fuera de pantalla */
+.prow,.rmrow{content-visibility:auto;contain-intrinsic-size:auto 68px}

@@ -42,6 +42,7 @@ const pad = n => String(n).padStart(2, "0");
 const isoDate = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
 const today = () => isoDate(new Date());
 const fmtDate = s => { if (!s) return ""; const [y, m, d] = s.split("-"); return `${+d} ${MESES[+m - 1].slice(0, 3)} ${y}`; };
+const buscaEn = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
 const norm = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 const num = v => { let s = String(v ?? "").trim().replace(/[^\d.,]/g, ""); s = s.replace(/[.,]\d{1,2}$/, ""); return Math.max(0, parseInt(s.replace(/[^\d]/g, ""), 10) || 0); };
 const miles = n => n ? Number(n).toLocaleString("es-CO") : "";
@@ -366,14 +367,14 @@ function editInv(id) {
 
 /* ---------- Inventario ---------- */
 function vStock() {
-  const q = norm(ui.stockQ);
-  const lista = activos().filter(p => (!ui.stockTipo || p.tipo === ui.stockTipo) && (!q || norm(p.nombre).includes(q)))
+  const q = buscaEn(ui.stockQ);
+  const lista = activos().filter(p => (!ui.stockTipo || p.tipo === ui.stockTipo))
     .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
   const unid = activos().reduce((a, p) => a + Math.max(0, p.stock), 0);
   return `<input class="search" id="stockQ" data-input="stockQ" placeholder="Buscar producto" value="${esc(ui.stockQ)}" aria-label="Buscar producto">
   <div class="scroller"><button class="chip" type="button" data-action="stock-tipo" data-v="" aria-pressed="${!ui.stockTipo}">Todos</button>${TIPOS.map(t => `<button class="chip" type="button" data-action="stock-tipo" data-v="${t}" aria-pressed="${ui.stockTipo === t}">${t}</button>`).join("")}</div>
-  <p class="muted small" style="margin:0">${unid} unidades en stock · ${lista.length} productos</p>
-  <section class="card" style="padding-block:4px">${lista.map(p => `<div class="prow">
+  <p class="muted small" style="margin:0">${unid} unidades en stock · <span id="cuentaQ">${lista.filter(p => !q || buscaEn(p.nombre + " " + p.tipo).includes(q)).length}</span> productos</p>
+  <section class="card" style="padding-block:4px">${lista.map(p => `<div class="prow" data-s="${esc(buscaEn(p.nombre + " " + p.tipo))}"${q && !buscaEn(p.nombre + " " + p.tipo).includes(q) ? " hidden" : ""}>
     ${thumb(p)}<div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)}${p.stock <= 0 ? " · Agotado" : ""}</div></div>
     <div class="stepper"><button class="icon-btn" type="button" data-action="stock" data-c="${p.codigo}" data-d="-1" aria-label="Restar uno a ${esc(p.nombre)}">−</button>
     <b class="${p.stock <= 0 ? "zero" : ""}">${p.stock}</b>
@@ -382,32 +383,32 @@ function vStock() {
 
 /* ---------- Catálogo: productos, materia prima, remodelación ---------- */
 function vCatalogo() {
-  const seg = ui.catSeg, q = norm(ui.catQ);
+  const seg = ui.catSeg, q = buscaEn(ui.catQ);
   let body;
   if (seg === "productos") {
-    const lista = activos().filter(p => !q || norm(p.nombre).includes(q) || norm(p.tipo).includes(q)).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+    const lista = activos().slice().sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
     const perd = activos().filter(p => p.mayor - costoProd(p) < 0).length;
     body = `${perd ? `<div class="warn">${perd} producto${perd > 1 ? "s" : ""} te dan pérdida al por mayor. Están marcados en rojo.</div>` : ""}
-    <section class="card" style="padding-block:4px">${lista.map(p => { const c = costoProd(p), gm = p.mayor - c; return `<div class="prow tappable" data-action="edit-prod" data-c="${p.codigo}" role="button" tabindex="0">
+    <section class="card" style="padding-block:4px">${lista.map(p => { const c = costoProd(p), gm = p.mayor - c; return `<div class="prow tappable" data-action="edit-prod" data-c="${p.codigo}" role="button" tabindex="0" data-s="${esc(buscaEn(p.nombre + " " + p.tipo))}"${q && !buscaEn(p.nombre + " " + p.tipo).includes(q) ? " hidden" : ""}>
       ${thumb(p)}<div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)} · #${p.codigo}</div>
       ${gm < 0 ? `<span class="tag loss">Pérdida al por mayor ${$(gm)}</span>` : ""}${!p.menor ? `<span class="tag loss">Sin precio</span>` : ""}</div>
       <div class="prices"><span>Costo</span><span>Mayor</span><span>Detal</span><b>${$(c)}</b><b>${$(p.mayor)}</b><b>${$(p.menor)}</b></div></div>`; }).join("") || '<div class="empty">Sin resultados</div>'}</section>`;
   } else if (seg === "materia") {
-    const lista = S.materia.filter(m => !q || norm(m.nombre).includes(q) || norm(m.lugar).includes(q));
-    body = `<section class="card" style="padding-block:4px">${lista.map(m => { const url = safeUrl(m.link); return `<div class="prow tappable" data-action="edit-mat" data-id="${m.id}" role="button" tabindex="0">
+    const lista = S.materia;
+    body = `<section class="card" style="padding-block:4px">${lista.map(m => { const url = safeUrl(m.link); return `<div class="prow tappable" data-action="edit-mat" data-id="${m.id}" role="button" tabindex="0" data-s="${esc(buscaEn(m.nombre + " " + m.lugar))}"${q && !buscaEn(m.nombre + " " + m.lugar).includes(q) ? " hidden" : ""}>
       <div class="grow"><div class="name">${esc(m.nombre)}</div><div class="muted small">${esc(m.lugar)} · ${m.cantidad} unid. por ${$(m.precio)} · <b class="num">${$(m.cantidad ? m.precio / m.cantidad : 0)}</b> c/u</div></div>
       ${url ? `<a class="buy" href="${esc(url)}" target="_blank" rel="noopener">Comprar</a>` : ""}</div>`; }).join("") || '<div class="empty">Sin resultados</div>'}</section>`;
   } else {
     const todos = S.productos, arch = todos.filter(p => remo(p) === "archivado").length, base = todos.length - arch;
     const hechos = todos.filter(p => remo(p) === "remodelado").length;
-    const lista = todos.filter(p => remo(p) === ui.remFiltro && (!q || norm(p.nombre).includes(q) || norm(p.tipo).includes(q))).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+    const lista = todos.filter(p => remo(p) === ui.remFiltro).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
     const cnt = k => todos.filter(p => remo(p) === k).length;
     body = `<section class="card" style="display:flex;flex-direction:column;gap:8px">
       <div class="row between"><b>${hechos} de ${base} remodelados</b><span class="muted small">${arch} archivados</span></div>
       <div class="progress" aria-hidden="true"><i style="width:${base ? Math.round(hechos / base * 100) : 0}%"></i></div></section>
     <div class="scroller">${Object.keys(REMO).map(k => `<button class="chip" type="button" data-action="rem-filtro" data-v="${k}" aria-pressed="${ui.remFiltro === k}">${REMO[k]} (${cnt(k)})</button>`).join("")}</div>
     ${ui.remFiltro === "archivado" ? `<p class="note" style="margin:0">Los archivados no salen en inventario, catálogo ni pedidos nuevos. Sus ventas viejas se conservan. Puedes recuperarlos cuando quieras.</p>` : ""}
-    <section class="card" style="padding-block:2px">${lista.map(p => { const r = remo(p), v = S.contenido.filter(c => c.productoCodigo === p.codigo).length; return `<div class="rmrow">
+    <section class="card" style="padding-block:2px">${lista.map(p => { const r = remo(p), v = S.contenido.filter(c => c.productoCodigo === p.codigo).length; return `<div class="rmrow" data-s="${esc(buscaEn(p.nombre + " " + p.tipo))}"${q && !buscaEn(p.nombre + " " + p.tipo).includes(q) ? " hidden" : ""}>
       <div class="row between" style="align-items:flex-start">${thumb(p, "lg")}<div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)} · #${p.codigo}${v ? ` · ${v} video${v > 1 ? "s" : ""}` : ""}</div></div>
       ${r !== "archivado" ? `<button class="btn sm ghost" type="button" data-action="video-prod" data-c="${p.codigo}">Crear video</button>` : ""}</div>
       <div class="rm-st" role="group" aria-label="Estado de ${esc(p.nombre)}">
@@ -855,6 +856,17 @@ async function importar(file) {
 let tt;
 function toast(msg) { const r = $id("toastRoot"); r.innerHTML = `<div class="toast" role="status">${esc(msg)}</div>`; clearTimeout(tt); tt = setTimeout(() => r.innerHTML = "", 2800); }
 
+/* Búsqueda instantánea: oculta filas sin redibujar la pantalla (el teclado no se cierra) */
+let _fq = null;
+function filtrarFilas(valor) {
+  if (_fq) cancelAnimationFrame(_fq);
+  _fq = requestAnimationFrame(() => {
+    const q = buscaEn(valor); let n = 0;
+    document.querySelectorAll("#app [data-s]").forEach(el => { const ok = !q || el.dataset.s.includes(q); if (el.hidden === ok) el.hidden = !ok; if (ok) n++; });
+    const c = $id("cuentaQ"); if (c) c.textContent = n;
+  });
+}
+
 /* ---------- Eventos ---------- */
 document.addEventListener("click", e => {
   if (e.target.closest("a[href]")) return;
@@ -961,7 +973,7 @@ document.addEventListener("keydown", e => {
 document.addEventListener("input", e => {
   const t = e.target;
   if (t.classList && t.classList.contains("money-in")) { const n = num(t.value), f = miles(n); if (t.value !== f) { t.value = f; try { t.setSelectionRange(f.length, f.length); } catch (er) { } } }
-  if (t.dataset.input) { ui[t.dataset.input] = t.value; clearTimeout(window._bt); const id = t.id; window._bt = setTimeout(() => { render(); const el = $id(id); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 180); return; }
+  if (t.dataset.input) { ui[t.dataset.input] = t.value; filtrarFilas(t.value); return; }
   if (t.dataset.f && draft) { const k = t.dataset.f; draft[k] = (k === "envio" || k === "abono") ? num(t.value) : t.value;
     if (k === "envio") draft.envioAuto = false;
     if (k === "ciudad") { clearTimeout(window._ct); window._ct = setTimeout(() => { if (!draft) return; autoEnvio(); drawOrderForm("f_ciudad"); }, 500); }
