@@ -81,11 +81,12 @@ async function subirFoto(p, file) {
   }
 }
 
-function costoProd(p) { return (p.hilo || 0) + (p.dije || 0) + (p.mostacillas || 0) + (p.compra || 0) + (p.manoObra || 0) + (p.empaque || 0); }
+const n0 = v => typeof v === "number" ? v : num(v);
+function costoProd(p) { return n0(p.hilo) + n0(p.dije) + n0(p.mostacillas) + n0(p.compra) + n0(p.manoObra) + n0(p.empaque); }
 const remo = p => p.remodelacion || "pendiente";
 const activos = () => S.productos.filter(p => remo(p) !== "archivado");
 
-const pedSub = p => p.lineas.reduce((a, l) => a + l.cantidad * l.precio, 0);
+const pedSub = p => p.lineas.reduce((a, l) => a + n0(l.cantidad) * n0(l.precio), 0);
 /* Envío: "contado" = viene en la factura y el cliente lo paga con el pedido; "contraentrega" = lo paga al recibir y no entra en el total */
 const modoEnvio = p => p.envioModo || (p.envioPaga === "yo" ? "blu" : "contado");
 const pedTotal = p => pedSub(p) + (modoEnvio(p) === "contado" ? (+p.envio || 0) : 0);
@@ -101,7 +102,7 @@ function envioPorCiudad(ciudad) {
   const z = ZONAS_ENVIO.find(z => z.ciudades.includes(c)) || ZONAS_ENVIO.find(z => z.ciudades.some(x => c.startsWith(x + " ") || c.endsWith(" " + x)));
   return z ? { valor: z.valor, zona: z.nombre, seguro: true } : { valor: ENVIO_LEJANO.valor, zona: ENVIO_LEJANO.nombre, seguro: false };
 }
-const pedCosto = p => p.lineas.reduce((a, l) => a + l.cantidad * (l.costo || 0), 0);
+const pedCosto = p => p.lineas.reduce((a, l) => a + n0(l.cantidad) * n0(l.costo), 0);
 const pedGan = p => pedSub(p) - pedCosto(p) - (p.envioPaga === "yo" ? (+p.envio || 0) : 0);
 const unidades = p => p.lineas.reduce((a, l) => a + l.cantidad, 0);
 
@@ -940,7 +941,7 @@ document.addEventListener("click", e => {
     case "new-prod": editProd(null); break;
     case "quitar-foto": { const p = editing, vieja = p.foto; p.foto = ""; const real = S.productos.find(x => x.codigo === p.codigo);
       if (real) { real.foto = ""; guardar("productos", real); render(); } if (vieja) sb.storage.from("fotos").remove([vieja]).catch(() => {}); drawProdFoto(); break; }
-    case "save-prod": { const p = editing; if (!p.nombre.trim()) { toast("Ponle nombre al producto"); return; }
+    case "save-prod": { const p = editing; ["hilo", "dije", "mostacillas", "compra", "manoObra", "empaque", "mayor", "menor"].forEach(k => p[k] = n0(p[k])); p.stock = parseInt(p.stock, 10) || 0; if (!p.nombre.trim()) { toast("Ponle nombre al producto"); return; }
       const i = S.productos.findIndex(x => x.codigo === p.codigo); if (i >= 0) S.productos[i] = p; else S.productos.push(p);
       guardar("productos", p); closeSheet(); render(); toast("Producto guardado"); break; }
     case "edit-mat": editMat(+t.dataset.id); break;
@@ -991,7 +992,7 @@ document.addEventListener("change", e => {
   if (t.dataset.change === "mes") { ui.ventasMes = t.value; render(); }
   if (t.dataset.change === "invmes") { ui.invMes = t.value; render(); }
   if (t.dataset.iv && editingInv) editingInv[t.dataset.iv] = t.value;
-  if (t.dataset.pp && editing) { editing[t.dataset.pp] = t.value; drawProdTot(); }
+  if (t.dataset.pp && editing && (t.dataset.pp === "nombre" || t.dataset.pp === "tipo")) { editing[t.dataset.pp] = t.value; drawProdTot(); }
   if (t.dataset.cc && editingC) editingC[t.dataset.cc] = t.value;
   if (t.id === "fileImport" && t.files && t.files[0]) importar(t.files[0]);
   if (t.id === "ppFotoIn" && t.files && t.files[0] && editing) { const p = editing; subirFoto(p, t.files[0]).then(ok => {
