@@ -255,6 +255,7 @@ function vInicio() {
   <section class="card acct">
     <h3>Cuenta</h3>
     <p class="muted small" style="margin:0">${esc(email)}</p>
+    <button class="btn ghost" type="button" data-action="ayuda-rec">Configurar recordatorios de Apple</button>
     <button class="btn ghost" type="button" data-action="actualizar">Buscar actualización</button>
     <button class="btn ghost" type="button" data-action="logout">Cerrar sesión</button>
     <p class="muted small" style="margin:0">Versión ${esc(window.BLU_VERSION || "")}</p>
@@ -280,6 +281,7 @@ function orderCard(p, opts = {}) {
       ${etapa(p) === "apartado" || etapa(p) === "pagopend"
         ? `<button class="btn grow" type="button" data-action="pago-completo" data-id="${p.id}">Ya pagó todo</button>`
         : `<button class="btn grow" type="button" data-action="avanzar" data-id="${p.id}">${NEXT_LABEL[p.estado]}</button>`}
+      ${["pendiente", "empacado"].includes(etapa(p)) ? `<button class="btn ghost" type="button" data-action="rec-ped" data-id="${p.id}" aria-label="Crear recordatorio">⏰</button>` : ""}
       <button class="btn ghost" type="button" data-action="ver" data-id="${p.id}">Detalle</button></div>` : ""}
     ${opts.detalle ? `<button class="btn ghost sm" type="button" data-action="ver" data-id="${p.id}" style="align-self:flex-start">Detalle</button>` : ""}
   </article>`;
@@ -795,6 +797,7 @@ function editContent(id, preset) {
     <div class="links" id="ccLinks"></div>
     <div class="field"><label for="cc_link">Link de la publicación</label><input id="cc_link" type="url" data-cc="link" value="${esc(c.link)}" placeholder="https://"></div>
     <button class="btn block" type="button" data-action="save-content">Guardar</button>
+    <button class="btn block line" type="button" data-action="rec-content">⏰ Recordarme publicar</button>
     ${nuevo ? "" : `<div id="delCBox"><button class="btn block danger" type="button" data-action="del-c-ask">Eliminar contenido</button></div>`}`, () => { editingC = c; drawCLinks(); });
 }
 function drawCLinks() {
@@ -853,6 +856,53 @@ async function importar(file) {
   await cargar(); render(); toast("Listo: " + rows.length + " registros importados");
 }
 
+/* ---------- Recordatorios de Apple (vía el atajo "Blu Recordatorio") ---------- */
+const ATAJO = "Blu Recordatorio";
+const localISO = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+function horaPorDefecto() { const d = new Date(); d.setSeconds(0, 0); if (d.getHours() >= 18) d.setDate(d.getDate() + 1); d.setHours(18, 0); return localISO(d); }
+let recDraft = null;
+function abrirRecordatorio(titulo, cuando, notas) {
+  recDraft = { titulo, cuando, notas };
+  openSheet("Recordatorio", `
+    <div class="field"><label for="rc_t">Recordarme</label><input id="rc_t" data-rc="titulo" value="${esc(titulo)}"></div>
+    <div class="field"><label for="rc_f">Cuándo</label><input id="rc_f" type="datetime-local" data-rc="cuando" value="${esc(cuando)}"></div>
+    <div class="field"><label for="rc_n">Notas</label><textarea id="rc_n" data-rc="notas" rows="4">${esc(notas)}</textarea></div>
+    <button class="btn block" type="button" data-action="rec-crear">Crear en Recordatorios</button>
+    <p class="muted small" style="margin:0">Se abre Atajos y el recordatorio queda en tu lista “Blu”. La primera vez necesitas crear el atajo: <button class="btn sm ghost" type="button" data-action="ayuda-rec">ver cómo</button></p>`);
+}
+function crearRecordatorio() {
+  const r = recDraft; if (!r || !r.titulo.trim()) { toast("Escribe qué te recuerdo"); return; }
+  const fecha = (r.cuando || horaPorDefecto()).replace("T", " ");
+  const payload = JSON.stringify({ titulo: r.titulo.trim(), fecha, notas: r.notas || "" });
+  closeSheet();
+  location.href = "shortcuts://run-shortcut?name=" + encodeURIComponent(ATAJO) + "&input=text&text=" + encodeURIComponent(payload);
+}
+function ayudaRecordatorios() {
+  openSheet("Recordatorios de Apple", `
+    <p style="margin:0">Se hace una sola vez en el iPhone (y otra en el iPad si también lo usas ahí).</p>
+    <div class="card" style="display:flex;flex-direction:column;gap:8px">
+      <h3>1. Crea la lista</h3>
+      <p style="margin:0">En la app <b>Recordatorios</b>, crea una lista llamada <b>Blu</b>.</p>
+    </div>
+    <div class="card" style="display:flex;flex-direction:column;gap:8px">
+      <h3>2. Crea el atajo</h3>
+      <p style="margin:0">En la app <b>Atajos</b> toca <b>+</b> y ponle de nombre exactamente <b>Blu Recordatorio</b>. Agrega estas acciones en orden:</p>
+      <ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px">
+        <li><b>Obtener diccionario de</b> → <i>Entrada del atajo</i></li>
+        <li><b>Obtener valor de</b> la clave <b>titulo</b> en <i>Diccionario</i></li>
+        <li><b>Obtener valor de</b> la clave <b>fecha</b> en <i>Diccionario</i></li>
+        <li><b>Obtener valor de</b> la clave <b>notas</b> en <i>Diccionario</i></li>
+        <li><b>Añadir recordatorio nuevo</b>: en el texto pon el valor de <b>titulo</b>, en la lista escoge <b>Blu</b>, toca la flecha para ver más opciones, activa la alerta y en la fecha pon el valor de <b>fecha</b>; en notas, el valor de <b>notas</b>.</li>
+      </ol>
+      <p class="muted small" style="margin:0">Si Atajos pregunta qué recibe el atajo, escoge <b>Texto</b>.</p>
+    </div>
+    <div class="card" style="display:flex;flex-direction:column;gap:8px">
+      <h3>3. Pruébalo</h3>
+      <button class="btn" type="button" data-action="rec-prueba">Crear recordatorio de prueba</button>
+      <p class="muted small" style="margin:0">Debe aparecer en la lista Blu con la hora que pusiste. Si sale “no se encontró el atajo”, revisa que el nombre sea exactamente <b>Blu Recordatorio</b>.</p>
+    </div>`);
+}
+
 /* ---------- Toast ---------- */
 let tt;
 function toast(msg) { const r = $id("toastRoot"); r.innerHTML = `<div class="toast" role="status">${esc(msg)}</div>`; clearTimeout(tt); tt = setTimeout(() => r.innerHTML = "", 2800); }
@@ -899,6 +949,16 @@ document.addEventListener("click", e => {
       if (!p.importado) editPed.lineas.forEach((l, i) => { const antes = p.lineas[i], pr = S.productos.find(x => x.codigo === l.codigo);
         if (pr && antes && l.cantidad !== antes.cantidad) { pr.stock -= (l.cantidad - antes.cantidad); guardar("productos", pr); } });
       p.lineas = editPed.lineas.map(l => ({ ...l })); guardar("pedidos", p); render(); verPedido(p.id); toast("Pedido #" + p.n + " actualizado"); break; }
+    case "rec-ped": { const p = S.pedidos.find(x => x.id === t.dataset.id); const empacar = etapa(p) === "pendiente";
+      const items = p.lineas.map(l => `${l.cantidad} × ${l.nombre}${l.tarjeta ? " (tarjeta personalizada)" : ""}`).join("\n");
+      abrirRecordatorio((empacar ? "Empacar" : "Enviar") + " pedido #" + p.n + " · " + p.cliente, horaPorDefecto(),
+        items + (empacar ? "" : `\n\n${p.ciudad}\n${p.direccion}\nCel ${p.celular || "—"} · CC ${p.cc || "—"}\nEnvío ${modoEnvio(p) === "contraentrega" ? "contraentrega" : "contado"}`)); break; }
+    case "rec-content": { const c = editingC; const cuando = c.fechaPublicacion ? c.fechaPublicacion + "T" + (c.hora || "18:00") : horaPorDefecto();
+      abrirRecordatorio("Publicar: " + (c.titulo || "contenido") + (c.plataforma ? " (" + c.plataforma + ")" : ""), cuando,
+        [c.hook && "Hook: " + c.hook, c.caption && "Caption: " + c.caption, c.hashtags, c.audio && "Audio: " + c.audio].filter(Boolean).join("\n\n")); break; }
+    case "rec-crear": crearRecordatorio(); break;
+    case "ayuda-rec": ayudaRecordatorios(); break;
+    case "rec-prueba": { const d = new Date(Date.now() + 2 * 60000); recDraft = { titulo: "Prueba de Blu Gestión", cuando: localISO(d), notas: "Si ves esto, los recordatorios funcionan." }; crearRecordatorio(); break; }
     case "tarjeta": draft.lineas[+t.dataset.i].tarjeta = v === "1"; drawOrderForm(); break;
     case "qty": { const l = draft.lineas[+t.dataset.i]; l.cantidad = Math.max(1, l.cantidad + (+t.dataset.d)); drawOrderForm(); break; }
     case "save-order": saveOrder(); break;
@@ -983,6 +1043,7 @@ document.addEventListener("input", e => {
   if (t.dataset.lp && draft) { draft.lineas[+t.dataset.lp].precio = num(t.value); drawOrderForm(t.id); return; }
   if (t.dataset.pp && editing) { const k = t.dataset.pp; editing[k] = (k === "nombre" || k === "tipo") ? t.value : (k === "stock" ? (parseInt(t.value, 10) || 0) : num(t.value)); drawProdTot(); return; }
   if (t.dataset.mm && editingMat) { const k = t.dataset.mm; editingMat[k] = (k === "cantidad" || k === "precio") ? num(t.value) : t.value; return; }
+  if (t.dataset.rc && recDraft) { recDraft[t.dataset.rc] = t.value; return; }
   if (t.dataset.iv && editingInv) { editingInv[t.dataset.iv] = t.dataset.iv === "valor" ? num(t.value) : t.value; return; }
   if (t.dataset.abono) { const p = S.pedidos.find(x => x.id === t.dataset.abono); if (p) { p.abono = num(t.value); clearTimeout(p._t); p._t = setTimeout(() => { delete p._t; guardar("pedidos", p); render(); }, 600); } return; }
   if (t.dataset.cc && editingC) { editingC[t.dataset.cc] = t.value; if (t.dataset.cc === "inspiracion" || t.dataset.cc === "link") drawCLinks(); }
