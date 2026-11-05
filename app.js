@@ -491,7 +491,7 @@ function openSheet(title, html, onMount) {
   document.body.style.overflow = "hidden";
   onMount && onMount(sheetRoot.querySelector(".sheet"));
 }
-function closeSheet() { editPed = null; sheetRoot.innerHTML = ""; document.body.style.overflow = ""; draft = null; editing = null; editingMat = null; editingC = null; editingInv = null; }
+function closeSheet() { insForm = null; editPed = null; sheetRoot.innerHTML = ""; document.body.style.overflow = ""; draft = null; editing = null; editingMat = null; editingC = null; editingInv = null; }
 
 /* Nuevo pedido */
 let draft = null;
@@ -726,6 +726,35 @@ function drawEditLineas() {
     <div class="row" style="gap:8px"><button class="btn grow" type="button" data-action="save-lineas">Guardar cambios</button><button class="btn ghost" type="button" data-action="cancel-lineas">Cancelar</button></div></div>`;
 }
 
+/* Materia prima de cada producto: se enlaza con la lista de Catálogo → Materia prima */
+const insumosDe = p => (p.insumos || []).map(id => S.materia.find(m => m.id === id)).filter(Boolean);
+function lugarDeLink(u) {
+  const h = (String(u).match(/^https?:\/\/([^/]+)/i) || [])[1] || "";
+  const d = h.replace(/^www\.|^m\.|^api-/, "").toLowerCase();
+  if (/shein/.test(d)) return "SHEIN"; if (/temu/.test(d)) return "TEMU"; if (/santorini/.test(d)) return "SANTORINI";
+  if (/whimsofgirls/.test(d)) return "WHIMS"; if (/aliexpress/.test(d)) return "ALIEXPRESS"; if (/mercadolibre/.test(d)) return "MERCADO LIBRE"; if (/amazon/.test(d)) return "AMAZON";
+  return d ? d.split(".")[0].toUpperCase() : "";
+}
+let insForm = null;
+function drawProdIns() {
+  const box = $id("ppIns"); if (!box || !editing) return;
+  const ya = insumosDe(editing), libres = S.materia.filter(m => !(editing.insumos || []).includes(m.id)).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  box.innerHTML = `${ya.length ? `<div class="list">${ya.map(m => { const u = safeUrl(m.link); return `<div class="row between" style="gap:8px;padding:8px 10px;border-radius:12px;background:var(--soft)">
+      <div class="grow"><b>${esc(m.nombre)}</b><div class="muted small">${esc(m.lugar)} · ${$(m.cantidad ? m.precio / m.cantidad : 0)} c/u</div></div>
+      ${u ? `<a class="buy" href="${esc(u)}" target="_blank" rel="noopener">Comprar</a>` : ""}
+      <button class="icon-btn" type="button" data-action="ins-quitar" data-id="${m.id}" aria-label="Quitar ${esc(m.nombre)}">×</button></div>`; }).join("")}</div>`
+    : `<p class="muted small" style="margin:0">Todavía no le has enlazado materia prima.</p>`}
+  ${libres.length ? `<div class="field"><label for="ppInsSel">Agregar de tu materia prima</label><select id="ppInsSel" data-ins="sel"><option value="">Escoge un insumo…</option>${libres.map(m => `<option value="${m.id}">${esc(m.nombre)} · ${esc(m.lugar)}</option>`).join("")}</select></div>` : ""}
+  ${insForm ? `<div class="card" style="display:flex;flex-direction:column;gap:10px">
+      <div class="field"><label for="in_link">Link de compra</label><input id="in_link" type="url" data-inf="link" value="${esc(insForm.link)}" placeholder="Pega el link de SHEIN, Temu, Santorini…"></div>
+      <div class="field"><label for="in_nombre">Nombre</label><input id="in_nombre" data-inf="nombre" value="${esc(insForm.nombre)}" placeholder="Ej: Dije girasol dorado"></div>
+      <div class="grid3"><div class="field"><label for="in_lugar">Dónde</label><input id="in_lugar" data-inf="lugar" value="${esc(insForm.lugar)}"></div>
+        <div class="field"><label for="in_cant">Cantidad</label><input id="in_cant" inputmode="numeric" data-inf="cantidad" value="${insForm.cantidad || ""}" placeholder="1"></div>
+        <div class="field"><label for="in_precio">Precio total</label><input id="in_precio" inputmode="numeric" class="money-in" data-inf="precio" value="${miles(insForm.precio)}" placeholder="0"></div></div>
+      <div class="row" style="gap:8px"><button class="btn grow" type="button" data-action="ins-crear">Agregar a materia prima</button><button class="btn ghost" type="button" data-action="ins-cancelar">Cancelar</button></div>
+    </div>` : `<button class="btn block line" type="button" data-action="ins-nuevo">+ Nuevo insumo con link</button>`}`;
+}
+
 /* Detalle del producto */
 function verProd(codigo) {
   const p = S.productos.find(x => x.codigo === codigo); if (!p) return;
@@ -748,6 +777,7 @@ function verProd(codigo) {
       <div class="t" style="color:${p.mayor - c < 0 ? "var(--loss)" : "var(--pink-press)"}"><span>Ganancia por mayor</span><span>${$(p.mayor - c)}</span></div>
       <div style="color:${p.menor - c < 0 ? "var(--loss)" : "inherit"}"><span>Ganancia al detal</span><span>${$(p.menor - c)}</span></div>
     </div>
+    ${insumosDe(p).length ? `<section class="card" style="display:flex;flex-direction:column;gap:8px"><h3>Materia prima</h3>${insumosDe(p).map(m => { const u = safeUrl(m.link); return `<div class="row between" style="gap:8px"><div class="grow"><b>${esc(m.nombre)}</b><div class="muted small">${esc(m.lugar)} · ${$(m.cantidad ? m.precio / m.cantidad : 0)} c/u</div></div>${u ? `<a class="buy" href="${esc(u)}" target="_blank" rel="noopener">Comprar</a>` : ""}</div>`; }).join("")}</section>` : ""}
     ${costos.length ? `<section class="card" style="display:flex;flex-direction:column;gap:6px"><h3>De qué está hecho el costo</h3>${costos.map(([k, v]) => `<div class="row between"><span>${k}</span><span class="num">${$(v)}</span></div>`).join("")}</section>` : ""}
     <section class="card" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center">
       <div><b style="font-size:20px">${vendidas}</b><div class="muted small">vendidas</div></div>
@@ -773,7 +803,9 @@ function editProd(codigo) {
     <h3>Precios</h3>
     <div class="grid2">${f("mayor", "Por mayor")}${f("menor", "Detal")}</div>
     <div class="totals" id="ppTot"></div>
-    <button class="btn block" type="button" data-action="save-prod">Guardar producto</button>`, () => { editing = p; drawProdTot(); drawProdFoto(); });
+    <h3>Materia prima que usa</h3>
+    <div id="ppIns" style="display:flex;flex-direction:column;gap:10px"></div>
+    <button class="btn block" type="button" data-action="save-prod">Guardar producto</button>`, () => { editing = p; insForm = null; drawProdTot(); drawProdFoto(); drawProdIns(); });
 }
 function drawProdFoto() {
   const el = $id("ppFoto"); if (!el || !editing) return;
@@ -1034,6 +1066,12 @@ document.addEventListener("click", e => {
     case "video-prod": { const p = prodC(); const caps = S.contenido.filter(c => c.serie === "rebranding").map(c => +c.capitulo || 0);
       editContent(null, { serie: "rebranding", titulo: "Acompáñame a pasar de esto a esto: " + p.nombre, productoCodigo: p.codigo, capitulo: String(Math.max(0, ...caps) + 1) }); break; }
     case "edit-prod": editProd(+t.dataset.c); break;
+    case "ins-nuevo": insForm = { link: "", nombre: "", lugar: "", cantidad: 1, precio: 0 }; drawProdIns(); { const el = $id("in_link"); if (el) el.focus(); } break;
+    case "ins-cancelar": insForm = null; drawProdIns(); break;
+    case "ins-quitar": editing.insumos = (editing.insumos || []).filter(id => id !== +t.dataset.id); drawProdIns(); break;
+    case "ins-crear": { const f = insForm; if (!f.nombre.trim()) { toast("Ponle nombre al insumo"); return; }
+      const m = { id: Math.max(0, ...S.materia.map(x => x.id)) + 1, nombre: f.nombre.trim(), lugar: (f.lugar || lugarDeLink(f.link) || "").trim(), cantidad: num(f.cantidad) || 1, precio: num(f.precio), link: f.link.trim() };
+      S.materia.push(m); guardar("materia", m); editing.insumos = [...(editing.insumos || []), m.id]; insForm = null; drawProdIns(); toast(m.nombre + " quedó en Materia prima"); break; }
     case "ver-prod": verProd(+t.dataset.c); break;
     case "stock-det": { const p = prodC(); p.stock = Math.max(0, p.stock + (+t.dataset.d)); guardar("productos", p); render(); verProd(p.codigo); break; }
     case "new-prod": editProd(null); break;
@@ -1084,6 +1122,8 @@ document.addEventListener("input", e => {
   }
   if (t.dataset.pp && editing) { const k = t.dataset.pp; editing[k] = (k === "nombre" || k === "tipo") ? t.value : (k === "stock" ? (parseInt(t.value, 10) || 0) : num(t.value)); drawProdTot(); return; }
   if (t.dataset.mm && editingMat) { const k = t.dataset.mm; editingMat[k] = (k === "cantidad" || k === "precio") ? num(t.value) : t.value; return; }
+  if (t.dataset.inf && insForm) { const k = t.dataset.inf; insForm[k] = t.value;
+    if (k === "link") { const l = lugarDeLink(t.value), el = $id("in_lugar"); if (l && el && !el.value) { insForm.lugar = l; el.value = l; } } return; }
   if (t.dataset.rc && recDraft) { recDraft[t.dataset.rc] = t.value; return; }
   if (t.dataset.iv && editingInv) { editingInv[t.dataset.iv] = t.dataset.iv === "valor" ? num(t.value) : t.value; return; }
   if (t.dataset.abono) { const p = S.pedidos.find(x => x.id === t.dataset.abono); if (p) { p.abono = num(t.value); clearTimeout(p._t); p._t = setTimeout(() => { delete p._t; guardar("pedidos", p); render(); }, 600); } return; }
@@ -1092,6 +1132,7 @@ document.addEventListener("input", e => {
 document.addEventListener("change", e => {
   const t = e.target;
   if (t.dataset.change === "mes") { ui.ventasMes = t.value; render(); }
+  if (t.dataset.ins === "sel" && editing && t.value) { editing.insumos = [...(editing.insumos || []), +t.value]; drawProdIns(); return; }
   if (t.dataset.change === "invmes") { ui.invMes = t.value; render(); }
   if (t.dataset.iv && editingInv) editingInv[t.dataset.iv] = t.value;
   if (t.dataset.pp === "tipo" && editing && editing.tipo !== t.value) {
