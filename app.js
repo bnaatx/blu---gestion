@@ -22,7 +22,7 @@ const NEXT_LABEL = { pendiente: "Marcar empacado", empacado: "Marcar enviado", e
 const TIPOS = ["Pulsera", "Manilla individual", "Manillas parejas", "Manillas trios", "Cadenita individual", "Cadenitas parejas", "Collar individual", "Collares pareja", "Anillos", "Anillos pareja"];
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 const DIAS = ["L", "M", "M", "J", "V", "S", "D"];
-const REMO = { pendiente: "Pendiente", remodelado: "Remodelado", archivado: "Archivado" };
+const REMO = { pendiente: "Pendiente", remodelado: "Remodelado", remate: "En remate", archivado: "Archivado" };
 const SERIES = [
   { id: "remodelacion", nombre: "Remodelación del emprendimiento", sc: "#F1D1F6", si: "#7A3489" },
   { id: "rebranding", nombre: "Rebranding de productos", sc: "#FDDAE1", si: "#B9396F" },
@@ -382,7 +382,7 @@ function vStock() {
   <div class="scroller"><button class="chip" type="button" data-action="stock-tipo" data-v="" aria-pressed="${!ui.stockTipo}">Todos</button>${TIPOS.map(t => `<button class="chip" type="button" data-action="stock-tipo" data-v="${t}" aria-pressed="${ui.stockTipo === t}">${t}</button>`).join("")}</div>
   <p class="muted small" style="margin:0">${unid} unidades en stock · <span id="cuentaQ">${lista.filter(p => !q || buscaEn(p.nombre + " " + p.tipo).includes(q)).length}</span> productos</p>
   <section class="card" style="padding-block:4px">${lista.map(p => `<div class="prow tappable" data-action="ver-prod" data-c="${p.codigo}" role="button" tabindex="0" data-s="${esc(buscaEn(p.nombre + " " + p.tipo))}"${q && !buscaEn(p.nombre + " " + p.tipo).includes(q) ? " hidden" : ""}>
-    ${thumb(p)}<div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)}${p.stock <= 0 ? " · Agotado" : ""}</div></div>
+    ${thumb(p)}<div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)}${p.stock <= 0 ? " · Agotado" : ""}</div>${enRemate(p) ? `<span class="tag remate">Remate ${$(p.precioRemate)}</span>` : ""}</div>
     <div class="stepper"><button class="icon-btn" type="button" data-action="stock" data-c="${p.codigo}" data-d="-1" aria-label="Restar uno a ${esc(p.nombre)}">−</button>
     <b class="${p.stock <= 0 ? "zero" : ""}">${p.stock}</b>
     <button class="icon-btn" type="button" data-action="stock" data-c="${p.codigo}" data-d="1" aria-label="Sumar uno a ${esc(p.nombre)}">+</button></div></div>`).join("") || '<div class="empty">No hay productos con ese filtro</div>'}</section>`;
@@ -398,7 +398,7 @@ function vCatalogo() {
     body = `${perd ? `<div class="warn">${perd} producto${perd > 1 ? "s" : ""} te dan pérdida al por mayor. Están marcados en rojo.</div>` : ""}
     <section class="card" style="padding-block:4px">${lista.map(p => { const c = costoProd(p), gm = p.mayor - c; return `<div class="prow tappable" data-action="ver-prod" data-c="${p.codigo}" role="button" tabindex="0" data-s="${esc(buscaEn(p.nombre + " " + p.tipo))}"${q && !buscaEn(p.nombre + " " + p.tipo).includes(q) ? " hidden" : ""}>
       ${thumb(p)}<div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)} · #${p.codigo}</div>
-      ${gm < 0 ? `<span class="tag loss">Pérdida al por mayor ${$(gm)}</span>` : ""}${!p.menor ? `<span class="tag loss">Sin precio</span>` : ""}</div>
+      ${enRemate(p) ? `<span class="tag remate">Remate ${$(p.precioRemate)}</span>` : ""}${gm < 0 ? `<span class="tag loss">Pérdida al por mayor ${$(gm)}</span>` : ""}${!p.menor ? `<span class="tag loss">Sin precio</span>` : ""}</div>
       <div class="prices"><span>Costo</span><span>Mayor</span><span>Detal</span><b>${$(c)}</b><b>${$(p.mayor)}</b><b>${$(p.menor)}</b></div></div>`; }).join("") || '<div class="empty">Sin resultados</div>'}</section>`;
   } else if (seg === "materia") {
     const lista = S.materia;
@@ -406,7 +406,7 @@ function vCatalogo() {
       <div class="grow"><div class="name">${esc(m.nombre)}</div><div class="muted small">${esc(m.lugar)} · ${m.cantidad} unid. por ${$(m.precio)} · <b class="num">${$(m.cantidad ? m.precio / m.cantidad : 0)}</b> c/u</div></div>
       ${url ? `<a class="buy" href="${esc(url)}" target="_blank" rel="noopener">Comprar</a>` : ""}</div>`; }).join("") || '<div class="empty">Sin resultados</div>'}</section>`;
   } else {
-    const todos = S.productos, arch = todos.filter(p => remo(p) === "archivado").length, base = todos.length - arch;
+    const todos = S.productos, arch = todos.filter(p => remo(p) === "archivado").length, base = todos.filter(p => remo(p) === "pendiente" || remo(p) === "remodelado").length;
     const hechos = todos.filter(p => remo(p) === "remodelado").length;
     const lista = todos.filter(p => remo(p) === ui.remFiltro).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
     const cnt = k => todos.filter(p => remo(p) === k).length;
@@ -414,6 +414,7 @@ function vCatalogo() {
       <div class="row between"><b>${hechos} de ${base} remodelados</b><span class="muted small">${arch} archivados</span></div>
       <div class="progress" aria-hidden="true"><i style="width:${base ? Math.round(hechos / base * 100) : 0}%"></i></div></section>
     <div class="scroller">${Object.keys(REMO).map(k => `<button class="chip" type="button" data-action="rem-filtro" data-v="${k}" aria-pressed="${ui.remFiltro === k}">${REMO[k]} (${cnt(k)})</button>`).join("")}</div>
+    ${ui.remFiltro === "remate" ? vSugeridosRemate() : ""}
     ${ui.remFiltro === "archivado" ? `<p class="note" style="margin:0">Los archivados no salen en inventario, catálogo ni pedidos nuevos. Sus ventas viejas se conservan. Puedes recuperarlos cuando quieras.</p>` : ""}
     <section class="card" style="padding-block:2px">${lista.map(p => { const r = remo(p), v = S.contenido.filter(c => c.productoCodigo === p.codigo).length; return `<div class="rmrow" data-s="${esc(buscaEn(p.nombre + " " + p.tipo))}"${q && !buscaEn(p.nombre + " " + p.tipo).includes(q) ? " hidden" : ""}>
       <div class="row between" style="align-items:flex-start">${thumb(p, "lg")}<div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)} · #${p.codigo}${v ? ` · ${v} video${v > 1 ? "s" : ""}` : ""}</div></div>
@@ -421,8 +422,9 @@ function vCatalogo() {
       <div class="rm-st" role="group" aria-label="Estado de ${esc(p.nombre)}">
         <button type="button" data-action="remo" data-c="${p.codigo}" data-v="pendiente" aria-pressed="${r === "pendiente"}">Pendiente</button>
         <button type="button" data-action="remo" data-c="${p.codigo}" data-v="remodelado" aria-pressed="${r === "remodelado"}">Remodelado</button>
+        <button type="button" class="rem" data-action="remo" data-c="${p.codigo}" data-v="remate" aria-pressed="${r === "remate"}">Remate</button>
         <button type="button" class="arch" data-action="remo" data-c="${p.codigo}" data-v="archivado" aria-pressed="${r === "archivado"}">${r === "archivado" ? "Archivado" : "Archivar"}</button>
-      </div></div>`; }).join("") || '<div class="empty">No hay productos en este estado</div>'}</section>`;
+      </div>${r === "remate" ? `<div class="row between small" style="gap:8px"><span>Antes ${$(p.menor)} → <b>remate ${$(p.precioRemate)}</b> · ${p.stock} ${p.stock === 1 ? "unidad" : "unidades"}</span><button class="btn sm ghost" type="button" data-action="remate-precio" data-c="${p.codigo}">Cambiar precio</button></div>` : ""}</div>`; }).join("") || '<div class="empty">No hay productos en este estado</div>'}</section>`;
   }
   return `<div class="seg" role="group" aria-label="Catálogo" style="grid-template-columns:repeat(3,1fr)">
     <button type="button" data-action="seg" data-v="productos" aria-pressed="${seg === "productos"}">Productos</button>
@@ -491,7 +493,7 @@ function openSheet(title, html, onMount) {
   document.body.style.overflow = "hidden";
   onMount && onMount(sheetRoot.querySelector(".sheet"));
 }
-function closeSheet() { insForm = null; editPed = null; sheetRoot.innerHTML = ""; document.body.style.overflow = ""; draft = null; editing = null; editingMat = null; editingC = null; editingInv = null; }
+function closeSheet() { remateDraft = null; insForm = null; editPed = null; sheetRoot.innerHTML = ""; document.body.style.overflow = ""; draft = null; editing = null; editingMat = null; editingC = null; editingInv = null; }
 
 /* Nuevo pedido */
 let draft = null;
@@ -499,7 +501,8 @@ function newOrder() {
   draft = { fecha: today(), cliente: "", celular: "", cc: "", ciudad: "", direccion: "", precioTipo: "detal", envio: 0, envioModo: "contraentrega", envioAuto: true, pago: "pendiente", abono: 0, estado: "pendiente", canal: "whatsapp", lineas: [], q: "", pegado: "" };
   openSheet("Nuevo pedido", `<div id="orderForm"></div>`, () => drawOrderForm());
 }
-const priceFor = (p, t) => t === "mayor" ? p.mayor : p.menor;
+const enRemate = p => remo(p) === "remate" && n0(p.precioRemate) > 0;
+const priceFor = (p, t) => enRemate(p) ? n0(p.precioRemate) : t === "mayor" ? p.mayor : p.menor;
 function drawOrderForm(focusId) {
   const d = draft, box = $id("orderForm"); if (!box) return;
   const q = norm(d.q);
@@ -687,7 +690,9 @@ function saveOrder() {
   if (!d.cliente.trim()) miss.push("el nombre del cliente");
   if (!d.lineas.length) miss.push("al menos un producto");
   if (miss.length) { err.hidden = false; err.textContent = "Falta " + miss.join(" y ") + "."; return; }
-  d.lineas.forEach(l => { const p = S.productos.find(x => x.codigo === l.codigo); if (p) { p.stock -= l.cantidad; guardar("productos", p); } });
+  const agotados = [];
+  d.lineas.forEach(l => { const p = S.productos.find(x => x.codigo === l.codigo); if (p) { p.stock -= l.cantidad; if (remo(p) === "remate" && p.stock <= 0) { p.remodelacion = "archivado"; agotados.push(p.nombre); } guardar("productos", p); } });
+  if (agotados.length) setTimeout(() => toast("Se vendió el remate de " + agotados.join(", ") + " · quedó archivado"), 2900);
   const ped = { ...d, id: "p" + Date.now(), n: nextN(), envio: +d.envio || 0, envioPaga: undefined, pagado: d.pago === "pagado", abono: d.pago === "abono" ? (+d.abono || 0) : 0 }; delete ped.q; delete ped.pegado; delete ped.envioAuto; delete ped.envioPaga;
   S.pedidos.push(ped); guardar("pedidos", ped); closeSheet(); ui.pedFiltro = "activos"; go("pedidos"); toast("Pedido #" + ped.n + " guardado · stock descontado");
 }
@@ -755,6 +760,38 @@ function drawProdIns() {
     </div>` : `<button class="btn block line" type="button" data-action="ins-nuevo">+ Nuevo insumo con link</button>`}`;
 }
 
+/* Remate: últimas unidades más baratas; al venderse la última, el producto se archiva solo */
+const ultimaVenta = p => S.pedidos.filter(x => x.estado !== "perdido" && x.lineas.some(l => l.codigo === p.codigo)).map(x => x.fecha).sort().pop() || "";
+function sugerenciaRemate(p) {
+  const directo = n0(p.hilo) + n0(p.dije) + n0(p.mostacillas) + n0(p.compra) + n0(p.empaque);
+  const base = Math.round(n0(p.menor) * 0.6 / 1000) * 1000;
+  return Math.max(base, Math.ceil(directo / 1000) * 1000, 5000);
+}
+function vSugeridosRemate() {
+  const hace = isoDate(new Date(Date.now() - 60 * 864e5));
+  const sug = S.productos.filter(p => (remo(p) === "pendiente" || remo(p) === "remodelado") && p.stock > 0 && (ultimaVenta(p) || "") < hace)
+    .sort((a, b) => b.stock - a.stock || a.nombre.localeCompare(b.nombre, "es"));
+  if (!sug.length) return "";
+  return `<section class="card" style="display:flex;flex-direction:column;gap:8px">
+    <h3>Sugeridos para remate</h3>
+    <p class="muted small" style="margin:0">Tienen unidades y no se han vendido en los últimos 60 días.</p>
+    ${sug.slice(0, 15).map(p => `<div class="row between" style="gap:8px">${thumb(p, "sm")}<div class="grow"><b>${esc(p.nombre)}</b><div class="muted small">${esc(p.tipo)} · ${p.stock} en stock · ${ultimaVenta(p) ? "última venta " + fmtDate(ultimaVenta(p)) : "sin ventas registradas"}</div></div>
+      <button class="btn sm" type="button" data-action="remo" data-c="${p.codigo}" data-v="remate">Rematar</button></div>`).join("")}
+    ${sug.length > 15 ? `<p class="muted small" style="margin:0">Y ${sug.length - 15} más.</p>` : ""}
+  </section>`;
+}
+let remateDraft = null;
+function pedirPrecioRemate(p) {
+  remateDraft = { codigo: p.codigo, precio: n0(p.precioRemate) || sugerenciaRemate(p) };
+  const directo = n0(p.hilo) + n0(p.dije) + n0(p.mostacillas) + n0(p.compra) + n0(p.empaque);
+  openSheet("Precio de remate", `
+    <div class="row" style="gap:10px">${thumb(p, "lg")}<div><b>${esc(p.nombre)}</b><div class="muted small">${esc(p.tipo)} · ${p.stock} en stock</div></div></div>
+    <div class="totals"><div><span>Precio normal</span><span>${$(p.menor)}</span></div><div><span>Lo que pagaste en materiales y empaque</span><span>${$(directo)}</span></div></div>
+    <div class="field"><label for="rm_precio">Precio de remate</label><input id="rm_precio" inputmode="numeric" class="money-in" data-remate="precio" value="${miles(remateDraft.precio)}"></div>
+    <p class="muted small" style="margin:0">Te sugiero ${$(sugerenciaRemate(p))}: cerca del 40% menos y sin bajar de lo que pagaste en materiales. Aplica para detal y por mayor.</p>
+    <button class="btn block" type="button" data-action="remate-ok">Poner en remate</button>`);
+}
+
 /* Detalle del producto */
 function verProd(codigo) {
   const p = S.productos.find(x => x.codigo === codigo); if (!p) return;
@@ -784,7 +821,9 @@ function verProd(codigo) {
       <div><b class="num">${$(ingreso)}</b><div class="muted small">en ventas</div></div>
       <div><b>${ultima ? fmtDate(ultima) : "—"}</b><div class="muted small">última venta</div></div>
     </section>
+    ${enRemate(p) ? `<div class="warn">En remate a <b>${$(p.precioRemate)}</b>. Cuando se venda la última unidad se archiva solo.</div>` : ""}
     <button class="btn block" type="button" data-action="edit-prod" data-c="${p.codigo}">Editar producto</button>
+    ${remo(p) !== "archivado" ? `<button class="btn block ghost" type="button" data-action="remate-precio" data-c="${p.codigo}">${enRemate(p) ? "Cambiar precio de remate" : "Poner en remate"}</button>` : ""}
     ${remo(p) !== "archivado" ? `<button class="btn block ghost" type="button" data-action="video-prod" data-c="${p.codigo}">Crear video de este producto</button>` : ""}`);
 }
 
@@ -1061,7 +1100,10 @@ document.addEventListener("click", e => {
     case "stock-tipo": ui.stockTipo = v; render(); break;
     case "seg": ui.catSeg = v; ui.catQ = ""; render(); break;
     case "rem-filtro": ui.remFiltro = v; render(); break;
-    case "remo": { const p = prodC(); const antes = remo(p); p.remodelacion = v; guardar("productos", p); render();
+    case "remate-precio": pedirPrecioRemate(prodC()); break;
+    case "remate-ok": { const p = S.productos.find(x => x.codigo === remateDraft.codigo); const pr = num(remateDraft.precio); if (!pr) { toast("Escribe el precio de remate"); return; }
+      p.remodelacion = "remate"; p.precioRemate = pr; guardar("productos", p); closeSheet(); render(); toast(p.nombre + " en remate a " + $(pr)); break; }
+    case "remo": { const p = prodC(); if (v === "remate") { pedirPrecioRemate(p); break; } const antes = remo(p); p.remodelacion = v; guardar("productos", p); render();
       toast(v === "archivado" ? p.nombre + " archivado" : antes === "archivado" ? p.nombre + " recuperado" : p.nombre + ": " + REMO[v].toLowerCase()); break; }
     case "video-prod": { const p = prodC(); const caps = S.contenido.filter(c => c.serie === "rebranding").map(c => +c.capitulo || 0);
       editContent(null, { serie: "rebranding", titulo: "Acompáñame a pasar de esto a esto: " + p.nombre, productoCodigo: p.codigo, capitulo: String(Math.max(0, ...caps) + 1) }); break; }
@@ -1124,6 +1166,7 @@ document.addEventListener("input", e => {
   if (t.dataset.mm && editingMat) { const k = t.dataset.mm; editingMat[k] = (k === "cantidad" || k === "precio") ? num(t.value) : t.value; return; }
   if (t.dataset.inf && insForm) { const k = t.dataset.inf; insForm[k] = t.value;
     if (k === "link") { const l = lugarDeLink(t.value), el = $id("in_lugar"); if (l && el && !el.value) { insForm.lugar = l; el.value = l; } } return; }
+  if (t.dataset.remate && remateDraft) { remateDraft.precio = t.value; return; }
   if (t.dataset.rc && recDraft) { recDraft[t.dataset.rc] = t.value; return; }
   if (t.dataset.iv && editingInv) { editingInv[t.dataset.iv] = t.dataset.iv === "valor" ? num(t.value) : t.value; return; }
   if (t.dataset.abono) { const p = S.pedidos.find(x => x.id === t.dataset.abono); if (p) { p.abono = num(t.value); clearTimeout(p._t); p._t = setTimeout(() => { delete p._t; guardar("pedidos", p); render(); }, 600); } return; }
