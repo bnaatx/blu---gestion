@@ -82,6 +82,8 @@ async function subirFoto(p, file) {
 }
 
 const n0 = v => typeof v === "number" ? v : num(v);
+/* Mano de obra por categoría (tomada del Excel de costos de Blu) */
+const MO_CAT = { "Pulsera": 4000, "Manilla individual": 6000, "Manillas parejas": 12000, "Manillas trios": 18000, "Cadenita individual": 4000, "Cadenitas parejas": 8000, "Collar individual": 8000, "Collares pareja": 16000, "Anillos": 4000, "Anillos pareja": 4000 };
 function costoProd(p) { return n0(p.hilo) + n0(p.dije) + n0(p.mostacillas) + n0(p.compra) + n0(p.manoObra) + n0(p.empaque); }
 const remo = p => p.remodelacion || "pendiente";
 const activos = () => S.productos.filter(p => remo(p) !== "archivado");
@@ -188,9 +190,11 @@ function render() {
   $id("viewTitle").textContent = TITLES[tab];
   document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-current", b.dataset.tab === tab ? "page" : "false"));
   const fab = $id("fab");
-  fab.hidden = estado !== "listo" || !["inicio", "pedidos", "contenido"].includes(tab);
-  fab.textContent = tab === "contenido" ? "+ Nuevo contenido" : "+ Nuevo pedido";
-  fab.dataset.action = tab === "contenido" ? "new-content" : "new-order";
+  fab.hidden = estado !== "listo" || !["inicio", "pedidos", "contenido", "stock"].includes(tab);
+  fab.classList.toggle("fab-round", tab === "stock");
+  fab.textContent = tab === "stock" ? "+" : tab === "contenido" ? "+ Nuevo contenido" : "+ Nuevo pedido";
+  fab.setAttribute("aria-label", tab === "stock" ? "Registrar producto nuevo" : fab.textContent);
+  fab.dataset.action = tab === "stock" ? "new-prod" : tab === "contenido" ? "new-content" : "new-order";
   if (estado !== "listo") {
     $id("app").innerHTML = estado === "cargando"
       ? `<div class="empty"><div class="iso"></div><b>Cargando tus datos…</b></div>`
@@ -377,7 +381,7 @@ function vStock() {
   return `<input class="search" id="stockQ" data-input="stockQ" placeholder="Buscar producto" value="${esc(ui.stockQ)}" aria-label="Buscar producto">
   <div class="scroller"><button class="chip" type="button" data-action="stock-tipo" data-v="" aria-pressed="${!ui.stockTipo}">Todos</button>${TIPOS.map(t => `<button class="chip" type="button" data-action="stock-tipo" data-v="${t}" aria-pressed="${ui.stockTipo === t}">${t}</button>`).join("")}</div>
   <p class="muted small" style="margin:0">${unid} unidades en stock · <span id="cuentaQ">${lista.filter(p => !q || buscaEn(p.nombre + " " + p.tipo).includes(q)).length}</span> productos</p>
-  <section class="card" style="padding-block:4px">${lista.map(p => `<div class="prow" data-s="${esc(buscaEn(p.nombre + " " + p.tipo))}"${q && !buscaEn(p.nombre + " " + p.tipo).includes(q) ? " hidden" : ""}>
+  <section class="card" style="padding-block:4px">${lista.map(p => `<div class="prow tappable" data-action="ver-prod" data-c="${p.codigo}" role="button" tabindex="0" data-s="${esc(buscaEn(p.nombre + " " + p.tipo))}"${q && !buscaEn(p.nombre + " " + p.tipo).includes(q) ? " hidden" : ""}>
     ${thumb(p)}<div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)}${p.stock <= 0 ? " · Agotado" : ""}</div></div>
     <div class="stepper"><button class="icon-btn" type="button" data-action="stock" data-c="${p.codigo}" data-d="-1" aria-label="Restar uno a ${esc(p.nombre)}">−</button>
     <b class="${p.stock <= 0 ? "zero" : ""}">${p.stock}</b>
@@ -392,7 +396,7 @@ function vCatalogo() {
     const lista = activos().slice().sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
     const perd = activos().filter(p => p.mayor - costoProd(p) < 0).length;
     body = `${perd ? `<div class="warn">${perd} producto${perd > 1 ? "s" : ""} te dan pérdida al por mayor. Están marcados en rojo.</div>` : ""}
-    <section class="card" style="padding-block:4px">${lista.map(p => { const c = costoProd(p), gm = p.mayor - c; return `<div class="prow tappable" data-action="edit-prod" data-c="${p.codigo}" role="button" tabindex="0" data-s="${esc(buscaEn(p.nombre + " " + p.tipo))}"${q && !buscaEn(p.nombre + " " + p.tipo).includes(q) ? " hidden" : ""}>
+    <section class="card" style="padding-block:4px">${lista.map(p => { const c = costoProd(p), gm = p.mayor - c; return `<div class="prow tappable" data-action="ver-prod" data-c="${p.codigo}" role="button" tabindex="0" data-s="${esc(buscaEn(p.nombre + " " + p.tipo))}"${q && !buscaEn(p.nombre + " " + p.tipo).includes(q) ? " hidden" : ""}>
       ${thumb(p)}<div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)} · #${p.codigo}</div>
       ${gm < 0 ? `<span class="tag loss">Pérdida al por mayor ${$(gm)}</span>` : ""}${!p.menor ? `<span class="tag loss">Sin precio</span>` : ""}</div>
       <div class="prices"><span>Costo</span><span>Mayor</span><span>Detal</span><b>${$(c)}</b><b>${$(p.mayor)}</b><b>${$(p.menor)}</b></div></div>`; }).join("") || '<div class="empty">Sin resultados</div>'}</section>`;
@@ -722,11 +726,43 @@ function drawEditLineas() {
     <div class="row" style="gap:8px"><button class="btn grow" type="button" data-action="save-lineas">Guardar cambios</button><button class="btn ghost" type="button" data-action="cancel-lineas">Cancelar</button></div></div>`;
 }
 
+/* Detalle del producto */
+function verProd(codigo) {
+  const p = S.productos.find(x => x.codigo === codigo); if (!p) return;
+  const c = costoProd(p), u = fotoUrl(p);
+  const ventas = S.pedidos.filter(x => x.estado !== "perdido").flatMap(x => x.lineas.filter(l => l.codigo === p.codigo).map(l => ({ ...l, fecha: x.fecha })));
+  const vendidas = ventas.reduce((a, l) => a + n0(l.cantidad), 0), ingreso = ventas.reduce((a, l) => a + n0(l.cantidad) * n0(l.precio), 0);
+  const ultima = ventas.map(l => l.fecha).sort().pop();
+  const costos = [["Hilo", p.hilo], ["Dije", p.dije], ["Mostacillas", p.mostacillas], ["Compra", p.compra], ["Mano de obra", p.manoObra], ["Empaque", p.empaque]].filter(([, v]) => n0(v));
+  openSheet(p.nombre, `
+    ${u ? `<img class="foto-big" src="${esc(u)}" alt="Foto de ${esc(p.nombre)}">` : `<div class="foto-big ph"><span>Sin foto</span></div>`}
+    <div class="row between wrap" style="gap:8px"><span class="muted">${esc(p.tipo)} · #${p.codigo}</span><span class="tag ${remo(p) === "remodelado" ? "ok" : remo(p) === "archivado" ? "loss" : ""}">${REMO[remo(p)]}</span></div>
+    <section class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div><h3>Stock</h3><span class="muted small">${p.stock <= 0 ? "Agotado" : p.stock === 1 ? "Queda 1" : "Disponibles"}</span></div>
+      <div class="stepper"><button class="icon-btn" type="button" data-action="stock-det" data-c="${p.codigo}" data-d="-1" aria-label="Restar uno">−</button><b class="${p.stock <= 0 ? "zero" : ""}" style="font-size:22px">${p.stock}</b><button class="icon-btn" type="button" data-action="stock-det" data-c="${p.codigo}" data-d="1" aria-label="Sumar uno">+</button></div>
+    </section>
+    <div class="totals">
+      <div><span>Precio detal</span><b>${$(p.menor)}</b></div>
+      <div><span>Precio por mayor</span><b>${$(p.mayor)}</b></div>
+      <div><span>Costo de fabricación</span><span>${$(c)}</span></div>
+      <div class="t" style="color:${p.mayor - c < 0 ? "var(--loss)" : "var(--pink-press)"}"><span>Ganancia por mayor</span><span>${$(p.mayor - c)}</span></div>
+      <div style="color:${p.menor - c < 0 ? "var(--loss)" : "inherit"}"><span>Ganancia al detal</span><span>${$(p.menor - c)}</span></div>
+    </div>
+    ${costos.length ? `<section class="card" style="display:flex;flex-direction:column;gap:6px"><h3>De qué está hecho el costo</h3>${costos.map(([k, v]) => `<div class="row between"><span>${k}</span><span class="num">${$(v)}</span></div>`).join("")}</section>` : ""}
+    <section class="card" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center">
+      <div><b style="font-size:20px">${vendidas}</b><div class="muted small">vendidas</div></div>
+      <div><b class="num">${$(ingreso)}</b><div class="muted small">en ventas</div></div>
+      <div><b>${ultima ? fmtDate(ultima) : "—"}</b><div class="muted small">última venta</div></div>
+    </section>
+    <button class="btn block" type="button" data-action="edit-prod" data-c="${p.codigo}">Editar producto</button>
+    ${remo(p) !== "archivado" ? `<button class="btn block ghost" type="button" data-action="video-prod" data-c="${p.codigo}">Crear video de este producto</button>` : ""}`);
+}
+
 /* Producto */
 let editing = null;
 function editProd(codigo) {
   const nuevo = codigo == null;
-  const p = nuevo ? { codigo: Math.max(100, ...S.productos.map(x => x.codigo)) + 1, nombre: "", tipo: TIPOS[1], hilo: 0, dije: 0, mostacillas: 0, compra: 0, manoObra: 0, empaque: 2815, mayor: 0, menor: 0, stock: 0, remodelacion: "pendiente" } : { ...S.productos.find(x => x.codigo === codigo) };
+  const p = nuevo ? { codigo: Math.max(100, ...S.productos.map(x => x.codigo)) + 1, nombre: "", tipo: TIPOS[1], hilo: 0, dije: 0, mostacillas: 0, compra: 0, manoObra: MO_CAT[TIPOS[1]], empaque: 2815, mayor: 0, menor: 0, stock: 0, remodelacion: "pendiente" } : { ...S.productos.find(x => x.codigo === codigo) };
   const f = (k, l) => `<div class="field"><label for="pp_${k}">${l}</label><input id="pp_${k}" inputmode="numeric" data-pp="${k}" value="${k === "stock" ? (p[k] || "") : miles(p[k])}" placeholder="0"${k === "stock" ? "" : ' class="money-in"'}></div>`;
   openSheet(nuevo ? "Nuevo producto" : "Editar producto", `
     <div class="foto-edit" id="ppFoto"></div>
@@ -998,6 +1034,8 @@ document.addEventListener("click", e => {
     case "video-prod": { const p = prodC(); const caps = S.contenido.filter(c => c.serie === "rebranding").map(c => +c.capitulo || 0);
       editContent(null, { serie: "rebranding", titulo: "Acompáñame a pasar de esto a esto: " + p.nombre, productoCodigo: p.codigo, capitulo: String(Math.max(0, ...caps) + 1) }); break; }
     case "edit-prod": editProd(+t.dataset.c); break;
+    case "ver-prod": verProd(+t.dataset.c); break;
+    case "stock-det": { const p = prodC(); p.stock = Math.max(0, p.stock + (+t.dataset.d)); guardar("productos", p); render(); verProd(p.codigo); break; }
     case "new-prod": editProd(null); break;
     case "quitar-foto": { const p = editing, vieja = p.foto; p.foto = ""; const real = S.productos.find(x => x.codigo === p.codigo);
       if (real) { real.foto = ""; guardar("productos", real); render(); } if (vieja) sb.storage.from("fotos").remove([vieja]).catch(() => {}); drawProdFoto(); break; }
@@ -1041,6 +1079,9 @@ document.addEventListener("input", e => {
     if (k === "q" || k === "envio" || k === "abono") drawOrderForm(t.id); return; }
   if (t.dataset.ep && editPed) { editPed.lineas[+t.dataset.ep].precio = num(t.value); const s = $id("epSub"); if (s) s.textContent = $(editPed.lineas.reduce((a, l) => a + l.cantidad * l.precio, 0)); return; }
   if (t.dataset.lp && draft) { draft.lineas[+t.dataset.lp].precio = num(t.value); drawOrderForm(t.id); return; }
+  if (t.dataset.pp === "tipo" && editing && editing.tipo !== t.value) {
+    const antes = editing.tipo; if (!n0(editing.manoObra) || n0(editing.manoObra) === MO_CAT[antes]) { editing.manoObra = MO_CAT[t.value] || 0; const mo = $id("pp_manoObra"); if (mo) mo.value = miles(editing.manoObra); }
+  }
   if (t.dataset.pp && editing) { const k = t.dataset.pp; editing[k] = (k === "nombre" || k === "tipo") ? t.value : (k === "stock" ? (parseInt(t.value, 10) || 0) : num(t.value)); drawProdTot(); return; }
   if (t.dataset.mm && editingMat) { const k = t.dataset.mm; editingMat[k] = (k === "cantidad" || k === "precio") ? num(t.value) : t.value; return; }
   if (t.dataset.rc && recDraft) { recDraft[t.dataset.rc] = t.value; return; }
@@ -1053,6 +1094,9 @@ document.addEventListener("change", e => {
   if (t.dataset.change === "mes") { ui.ventasMes = t.value; render(); }
   if (t.dataset.change === "invmes") { ui.invMes = t.value; render(); }
   if (t.dataset.iv && editingInv) editingInv[t.dataset.iv] = t.value;
+  if (t.dataset.pp === "tipo" && editing && editing.tipo !== t.value) {
+    const antes = editing.tipo; if (!n0(editing.manoObra) || n0(editing.manoObra) === MO_CAT[antes]) { editing.manoObra = MO_CAT[t.value] || 0; const mo = $id("pp_manoObra"); if (mo) mo.value = miles(editing.manoObra); }
+  }
   if (t.dataset.pp && editing && (t.dataset.pp === "nombre" || t.dataset.pp === "tipo")) { editing[t.dataset.pp] = t.value; drawProdTot(); }
   if (t.dataset.cc && editingC) editingC[t.dataset.cc] = t.value;
   if (t.id === "fileImport" && t.files && t.files[0]) importar(t.files[0]);

@@ -283,3 +283,8 @@ input[type="date"]::-webkit-date-and-time-value,input[type="time"]::-webkit-date
 
 /* Listas largas: el navegador no pinta lo que está fuera de pantalla */
 .prow,.rmrow{content-visibility:auto;contain-intrinsic-size:auto 68px}
+
+/* Botón redondo "+" para producto nuevo */
+.fab.fab-round{width:60px;height:60px;padding:0;border-radius:50%;font-size:34px;font-weight:400;line-height:1;display:grid;place-items:center;background:var(--pink);color:#FFFFFF}
+.prow.tappable{cursor:pointer}
+.prow.tappable:active{background:var(--soft)}
