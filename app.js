@@ -143,10 +143,10 @@ const sb = window.supabase.createClient(window.BLU_CONFIG.supabaseUrl, window.BL
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
 });
 let uid = null, email = "";
-let S = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [] };
+let S = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [], proveedores: [] };
 let estado = "cargando"; // cargando | listo | error
-const COLS = ["productos", "materia", "pedidos", "contenido", "inversiones"];
-const ID_OF = { productos: p => String(p.codigo), materia: m => String(m.id), pedidos: p => p.id, contenido: c => c.id, inversiones: i => i.id };
+const COLS = ["productos", "materia", "pedidos", "contenido", "inversiones", "proveedores"];
+const ID_OF = { productos: p => String(p.codigo), materia: m => String(m.id), pedidos: p => p.id, contenido: c => c.id, inversiones: i => i.id, proveedores: v => String(v.id) };
 
 async function cargar() {
   const rows = [];
@@ -156,7 +156,7 @@ async function cargar() {
     rows.push(...data);
     if (data.length < 1000) break;
   }
-  const n = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [] };
+  const n = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [], proveedores: [] };
   rows.forEach(r => { if (n[r.coleccion]) n[r.coleccion].push(r.data); });
   n.productos.sort((a, b) => a.codigo - b.codigo);
   n.materia.sort((a, b) => a.id - b.id);
@@ -211,9 +211,9 @@ document.addEventListener("visibilitychange", async () => {
 /* ---------- Navegación ---------- */
 let tab = "inicio";
 const now = new Date();
-let ui = { pedFiltro: "activos", ventasMes: "", ventasSeg: "ventas", ventasEst: "", invMes: "", stockQ: "", stockTipo: "", catSeg: "productos", catQ: "", remFiltro: "pendiente",
+let ui = { matSeg: "insumos", matQ: "", pedFiltro: "activos", ventasMes: "", ventasSeg: "ventas", ventasEst: "", invMes: "", stockQ: "", stockTipo: "", catSeg: "productos", catQ: "", remFiltro: "pendiente",
   cVista: "calendario", cMes: now.getFullYear() + "-" + pad(now.getMonth() + 1), cDia: "", cSerie: "" };
-const TITLES = { inicio: "Inicio", pedidos: "Pedidos", ventas: "Ventas", stock: "Inventario", catalogo: "Catálogo", contenido: "Contenido" };
+const TITLES = { inicio: "Inicio", pedidos: "Pedidos", ventas: "Ventas", stock: "Inventario", catalogo: "Catálogo", materia: "Materia prima", contenido: "Contenido" };
 function go(t) { tab = t; render(); window.scrollTo(0, 0); }
 
 function render() {
@@ -231,7 +231,7 @@ function render() {
       : `<div class="empty"><div class="iso"></div><b>No se pudieron cargar tus datos</b><span class="small">Revisa tu conexión.</span><button class="btn" type="button" data-action="reintentar">Intentar de nuevo</button></div>`;
     return;
   }
-  $id("app").innerHTML = { inicio: vInicio, pedidos: vPedidos, ventas: vVentas, stock: vStock, catalogo: vCatalogo, contenido: vContenido }[tab]();
+  $id("app").innerHTML = { inicio: vInicio, pedidos: vPedidos, ventas: vVentas, stock: vStock, catalogo: vCatalogo, materia: vMateria, contenido: vContenido }[tab]();
 }
 
 /* ---------- Inicio ---------- */
@@ -420,6 +420,7 @@ function vStock() {
 
 /* ---------- Catálogo: productos, materia prima, remodelación ---------- */
 function vCatalogo() {
+  if (ui.catSeg === "materia") ui.catSeg = "productos";
   const seg = ui.catSeg, q = buscaEn(ui.catQ);
   let body;
   if (seg === "productos") {
@@ -430,15 +431,6 @@ function vCatalogo() {
       ${thumb(p)}<div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)} · #${p.codigo}</div>
       ${enRemate(p) ? `<span class="tag remate">Remate ${$(p.precioRemate)}</span>` : ""}${gm < 0 ? `<span class="tag loss">Pérdida al por mayor ${$(gm)}</span>` : ""}${!p.menor ? `<span class="tag loss">Sin precio</span>` : ""}</div>
       <div class="prices"><span>Costo</span><span>Mayor</span><span>Detal</span><b>${$(c)}</b><b>${$(p.mayor)}</b><b>${$(p.menor)}</b></div></div>`; }).join("") || '<div class="empty">Sin resultados</div>'}</section>`;
-  } else if (seg === "materia") {
-    const grupos = ["", ...CATS].map(c => [c, S.materia.filter(m => catDe(m) === c).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))]).filter(([, l]) => l.length);
-    const fila = m => { const url = safeUrl(m.link), ic = infoCat(m), cant = dec(m.cantidadIngresada) || dec(m.cantidad), pres = m.presentacion === "docenas" ? (cant === 1 ? "docena" : "docenas") : (cant === 1 ? ic.u : ic.pl);
-      return `<div class="prow tappable" data-action="edit-mat" data-id="${m.id}" role="button" tabindex="0" data-s="${esc(buscaEn(m.nombre + " " + m.lugar + " " + catDe(m)))}"${q && !buscaEn(m.nombre + " " + m.lugar + " " + catDe(m)).includes(q) ? " hidden" : ""}>
-      <div class="grow"><div class="name">${esc(m.nombre)}</div><div class="muted small">${esc(m.lugar)} · ${decTxt(cant)} ${pres} por ${$(m.precio)} · <b class="num">${$u(unitario(m))}</b> ${ic.c}</div></div>
-      ${url ? `<a class="buy" href="${esc(url)}" target="_blank" rel="noopener">Comprar</a>` : ""}</div>`; };
-    body = grupos.length ? grupos.map(([c, l]) => `<h3 style="margin-top:4px">${c || "Sin categoría"} <span class="muted">(${l.length})</span></h3>
-      ${c ? "" : `<p class="muted small" style="margin:0">Toca cada uno para asignarle su categoría.</p>`}
-      <section class="card" style="padding-block:4px">${l.map(fila).join("")}</section>`).join("") : '<div class="empty">Todavía no tienes materia prima</div>';
   } else {
     const todos = S.productos, arch = todos.filter(p => remo(p) === "archivado").length, base = todos.filter(p => remo(p) === "pendiente" || remo(p) === "remodelado").length;
     const hechos = todos.filter(p => remo(p) === "remodelado").length;
@@ -460,13 +452,88 @@ function vCatalogo() {
         <button type="button" class="arch" data-action="remo" data-c="${p.codigo}" data-v="archivado" aria-pressed="${r === "archivado"}">${r === "archivado" ? "Archivado" : "Archivar"}</button>
       </div>${r === "remate" ? `<div class="row between small" style="gap:8px"><span>Antes ${$(p.menor)} → <b>remate ${$(p.precioRemate)}</b> · ${p.stock} ${p.stock === 1 ? "unidad" : "unidades"}</span><button class="btn sm ghost" type="button" data-action="remate-precio" data-c="${p.codigo}">Cambiar precio</button></div>` : ""}</div>`; }).join("") || '<div class="empty">No hay productos en este estado</div>'}</section>`;
   }
-  return `<div class="seg" role="group" aria-label="Catálogo" style="grid-template-columns:repeat(3,1fr)">
+  return `<div class="seg" role="group" aria-label="Catálogo">
     <button type="button" data-action="seg" data-v="productos" aria-pressed="${seg === "productos"}">Productos</button>
-    <button type="button" data-action="seg" data-v="materia" aria-pressed="${seg === "materia"}">Materia prima</button>
     <button type="button" data-action="seg" data-v="remodelacion" aria-pressed="${seg === "remodelacion"}">Remodelación</button></div>
   <div class="row"><input class="search grow" id="catQ" data-input="catQ" placeholder="Buscar" value="${esc(ui.catQ)}" aria-label="Buscar en catálogo">
-  ${seg !== "remodelacion" ? `<button class="btn" type="button" data-action="${seg === "productos" ? "new-prod" : "new-mat"}">+ Nuevo</button>` : ""}</div>${body}`;
+  ${seg !== "remodelacion" ? `<button class="btn" type="button" data-action="new-prod">+ Nuevo</button>` : ""}</div>${body}`;
 }
+
+/* ---------- Materia prima: insumos y proveedores ---------- */
+const provDe = m => S.proveedores.find(v => v.id === m.proveedorId);
+const provNombre = m => (provDe(m) || {}).nombre || m.lugar || "";
+const logoUrl = v => v && v.logo ? window.BLU_CONFIG.supabaseUrl + "/storage/v1/object/public/fotos/" + v.logo : "";
+const logo = (v, cls = "") => { const u = logoUrl(v); return u ? `<img class="logo-prov ${cls}" src="${esc(u)}" alt="" loading="lazy">` : `<span class="logo-prov ph ${cls}" aria-hidden="true">${esc((v && v.nombre || "?").trim().charAt(0).toUpperCase())}</span>`; };
+function provPorLink(link) {
+  const l = buscaEn(lugarDeLink(link)); if (!l) return null;
+  return S.proveedores.find(v => { const n = buscaEn(v.nombre); return n && (n.includes(l) || l.includes(n.split(" ").pop())); }) || null;
+}
+function vMateria() {
+  const seg = ui.matSeg, q = buscaEn(ui.matQ);
+  const tabs = `<div class="seg" role="group" aria-label="Materia prima"><button type="button" data-action="mat-seg" data-v="insumos" aria-pressed="${seg === "insumos"}">Insumos</button><button type="button" data-action="mat-seg" data-v="proveedores" aria-pressed="${seg === "proveedores"}">Proveedores</button></div>`;
+  if (seg === "proveedores") {
+    const lista = S.proveedores.slice().sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+    return `${tabs}<div class="row"><input class="search grow" id="matQ" data-input="matQ" placeholder="Buscar proveedor" value="${esc(ui.matQ)}" aria-label="Buscar proveedor"><button class="btn" type="button" data-action="new-prov">+ Proveedor</button></div>
+    <div class="prov-grid">${lista.map(v => { const n = S.materia.filter(m => m.proveedorId === v.id).length, s = buscaEn(v.nombre + " " + (v.lugar || ""));
+      return `<button type="button" class="prov-card" data-action="ver-prov" data-id="${v.id}" data-s="${esc(s)}"${q && !s.includes(q) ? " hidden" : ""}>${logo(v, "lg")}<b>${esc(v.nombre)}</b><span class="muted small">${esc(v.lugar || "")}</span><span class="tag">${n} insumo${n === 1 ? "" : "s"}</span></button>`; }).join("")
+      || `<div class="empty" style="grid-column:1/-1"><div class="iso"></div><b>Aún no tienes proveedores</b><span class="small">Toca “+ Proveedor” para agregar el primero.</span></div>`}</div>`;
+  }
+  const grupos = ["", ...CATS].map(c => [c, S.materia.filter(m => catDe(m) === c).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))]).filter(([, l]) => l.length);
+  const fila = m => { const url = safeUrl(m.link), ic = infoCat(m), cant = dec(m.cantidadIngresada) || dec(m.cantidad), pres = m.presentacion === "docenas" ? (cant === 1 ? "docena" : "docenas") : (cant === 1 ? ic.u : ic.pl), s = buscaEn(m.nombre + " " + provNombre(m) + " " + catDe(m));
+    return `<div class="prow tappable" data-action="edit-mat" data-id="${m.id}" role="button" tabindex="0" data-s="${esc(s)}"${q && !s.includes(q) ? " hidden" : ""}>
+    ${logo(provDe(m) || { nombre: provNombre(m) }, "sm")}<div class="grow"><div class="name">${esc(m.nombre)}</div><div class="muted small">${esc(provNombre(m))} · ${decTxt(cant)} ${pres} por ${$(m.precio)} · <b class="num">${$u(unitario(m))}</b> ${ic.c}</div></div>
+    ${url ? `<a class="buy" href="${esc(url)}" target="_blank" rel="noopener">Comprar</a>` : ""}</div>`; };
+  return `${tabs}<div class="row"><input class="search grow" id="matQ" data-input="matQ" placeholder="Buscar insumo o proveedor" value="${esc(ui.matQ)}" aria-label="Buscar insumo"><button class="btn" type="button" data-action="new-mat">+ Insumo</button></div>
+  ${grupos.length ? grupos.map(([c, l]) => `<h3 style="margin-top:4px">${c || "Sin categoría"} <span class="muted">(${l.length})</span></h3>
+    ${c ? "" : `<p class="muted small" style="margin:0">Toca cada uno para asignarle su categoría.</p>`}
+    <section class="card" style="padding-block:4px">${l.map(fila).join("")}</section>`).join("") : '<div class="empty">Todavía no tienes materia prima</div>'}`;
+}
+let editingProv = null;
+function verProv(id) {
+  const v = S.proveedores.find(x => x.id === id); if (!v) return;
+  const ins = S.materia.filter(m => m.proveedorId === v.id).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  const cel = String(v.celular || "").replace(/[^\d]/g, ""), wa = cel ? "https://wa.me/" + (cel.length === 10 ? "57" + cel : cel) : "";
+  const web = safeUrl(v.web), mapa = v.direccion ? "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(v.direccion + (v.lugar ? ", " + v.lugar : "")) : "";
+  openSheet(v.nombre, `
+    <div class="row" style="gap:14px">${logo(v, "xl")}<div class="grow"><b style="font-size:18px">${esc(v.nombre)}</b><div class="muted">${esc(v.lugar || "")}</div></div></div>
+    <section class="card" style="display:flex;flex-direction:column;gap:10px">
+      ${cel ? `<div class="row between" style="gap:8px"><div><span class="muted small">Celular</span><br><b class="num" style="user-select:all">${esc(v.celular)}</b></div><div class="row" style="gap:6px"><a class="buy" href="${wa}" target="_blank" rel="noopener">WhatsApp</a><button class="btn sm ghost" type="button" data-action="copiar" data-v="${esc(v.celular)}">Copiar</button></div></div>` : ""}
+      ${v.direccion ? `<div class="row between" style="gap:8px"><div class="grow"><span class="muted small">Dirección</span><br>${esc(v.direccion)}</div><a class="buy" href="${esc(mapa)}" target="_blank" rel="noopener">Mapa</a></div>` : ""}
+      ${web ? `<div class="row between" style="gap:8px"><div class="grow" style="min-width:0"><span class="muted small">Página o Instagram</span><br><span style="overflow-wrap:anywhere">${esc(web)}</span></div><a class="buy" href="${esc(web)}" target="_blank" rel="noopener">Abrir</a></div>` : ""}
+      ${!cel && !v.direccion && !web ? `<p class="muted small" style="margin:0">Sin datos de contacto todavía.</p>` : ""}
+    </section>
+    <h3>Insumos que le compras (${ins.length})</h3>
+    ${ins.length ? `<section class="card" style="padding-block:4px">${ins.map(m => { const u = safeUrl(m.link); return `<div class="prow"><div class="grow"><div class="name">${esc(m.nombre)}</div><div class="muted small">${catDe(m) || "Sin categoría"} · <b class="num">${$u(unitario(m))}</b> ${infoCat(m).c}</div></div>${u ? `<a class="buy" href="${esc(u)}" target="_blank" rel="noopener">Comprar</a>` : ""}</div>`; }).join("")}</section>` : `<p class="muted small" style="margin:0">Todavía no hay insumos de este proveedor.</p>`}
+    <button class="btn block" type="button" data-action="edit-prov" data-id="${v.id}">Editar proveedor</button>`);
+}
+function editProv(id) {
+  const nuevo = id == null;
+  const v = nuevo ? { id: Math.max(0, ...S.proveedores.map(x => x.id)) + 1, nombre: "", lugar: "", celular: "", direccion: "", web: "", logo: "" } : { ...S.proveedores.find(x => x.id === id) };
+  openSheet(nuevo ? "Nuevo proveedor" : "Editar proveedor", `
+    <div class="row" style="gap:14px;align-items:center" id="provLogo"></div>
+    <div class="field"><label for="pv_nombre">Nombre</label><input id="pv_nombre" data-pv="nombre" value="${esc(v.nombre)}" placeholder="Ej: Bisutería Whims"></div>
+    <div class="field"><label for="pv_lugar">Lugar</label><input id="pv_lugar" data-pv="lugar" value="${esc(v.lugar)}" placeholder="Ej: Bogotá, San Victorino · o Tienda en línea"></div>
+    <div class="field"><label for="pv_cel">Celular de contacto</label><input id="pv_cel" type="tel" data-pv="celular" value="${esc(v.celular)}"></div>
+    <div class="field"><label for="pv_dir">Dirección</label><input id="pv_dir" data-pv="direccion" value="${esc(v.direccion)}"></div>
+    <div class="field"><label for="pv_web">Página o Instagram (opcional)</label><input id="pv_web" type="url" data-pv="web" value="${esc(v.web)}" placeholder="https://"></div>
+    <button class="btn block" type="button" data-action="save-prov">Guardar proveedor</button>`, () => { editingProv = v; drawProvLogo(); });
+}
+function drawProvLogo() {
+  const el = $id("provLogo"); if (!el || !editingProv) return;
+  el.innerHTML = `${logo(editingProv, "xl")}<div class="row wrap" style="gap:8px"><label class="btn sm ${logoUrl(editingProv) ? "ghost" : ""} filebtn">${logoUrl(editingProv) ? "Cambiar logo" : "Agregar logo"}<input type="file" id="pvLogoIn" accept="image/*"></label>${logoUrl(editingProv) ? `<button class="btn sm ghost" type="button" data-action="quitar-logo">Quitar</button>` : ""}</div>`;
+}
+async function subirLogo(v, file) {
+  toast("Subiendo logo…");
+  try {
+    const blob = await comprimirFoto(file), path = uid + "/prov-" + v.id + "-" + Date.now() + ".jpg";
+    const { error } = await sb.storage.from("fotos").upload(path, blob, { contentType: "image/jpeg", cacheControl: "31536000", upsert: false });
+    if (error) throw error;
+    const vieja = v.logo; v.logo = path; if (vieja) sb.storage.from("fotos").remove([vieja]).catch(() => {});
+    return true;
+  } catch (e) { console.error(e); toast("No se pudo subir el logo. Revisa tu conexión"); return false; }
+}
+/* selector de proveedor en los formularios de insumo */
+const selectProv = (sel, pre) => `<div class="field"><label for="${pre}_prov">Proveedor</label><select id="${pre}_prov" data-${pre}="proveedorId"><option value="">Escoge…</option>${S.proveedores.slice().sort((a, b) => a.nombre.localeCompare(b.nombre, "es")).map(v => `<option value="${v.id}" ${+sel === v.id ? "selected" : ""}>${esc(v.nombre)}</option>`).join("")}<option value="otro" ${sel === "otro" ? "selected" : ""}>Otro…</option></select></div>`;
 
 /* ---------- Contenido ---------- */
 function cCard(c) {
@@ -527,7 +594,7 @@ function openSheet(title, html, onMount) {
   document.body.style.overflow = "hidden";
   onMount && onMount(sheetRoot.querySelector(".sheet"));
 }
-function closeSheet() { remateDraft = null; insForm = null; editPed = null; sheetRoot.innerHTML = ""; document.body.style.overflow = ""; draft = null; editing = null; editingMat = null; editingC = null; editingInv = null; }
+function closeSheet() { editingProv = null; remateDraft = null; insForm = null; editPed = null; sheetRoot.innerHTML = ""; document.body.style.overflow = ""; draft = null; editing = null; editingMat = null; editingC = null; editingInv = null; }
 
 /* Nuevo pedido */
 let draft = null;
@@ -807,7 +874,8 @@ function drawProdIns() {
       <div class="field"><label for="inf_cat">Categoría</label><select id="inf_cat" data-inf="categoria">${opcionesCat(insForm.categoria)}</select></div>
       <div class="field"><label for="inf_link">Link de compra</label><input id="inf_link" type="url" data-inf="link" value="${esc(insForm.link)}" placeholder="Pega el link de SHEIN, Temu, Santorini…"></div>
       <div class="grid2"><div class="field"><label for="inf_nombre">Nombre</label><input id="inf_nombre" data-inf="nombre" value="${esc(insForm.nombre)}" placeholder="Ej: Dije girasol"></div>
-        <div class="field"><label for="inf_lugar">Dónde</label><input id="inf_lugar" data-inf="lugar" value="${esc(insForm.lugar)}"></div></div>
+        ${selectProv(insForm.proveedorId, "inf")}</div>
+      ${insForm.proveedorId === "otro" ? `<div class="field"><label for="inf_lugar">¿Dónde lo compras?</label><input id="inf_lugar" data-inf="lugar" value="${esc(insForm.lugar)}"></div>` : ""}
       ${camposCompra(insForm, "inf")}
       <div class="row" style="gap:8px"><button class="btn grow" type="button" data-action="ins-crear">Agregar a materia prima</button><button class="btn ghost" type="button" data-action="ins-cancelar">Cancelar</button></div>
     </div>` : `<button class="btn block line" type="button" data-action="ins-nuevo">+ Nuevo insumo con link</button>`}`;
@@ -937,7 +1005,8 @@ function drawMatForm(focusId) {
     <div class="field"><span class="lbl">Categoría</span><div class="chips">${CATS.map(c => `<button class="chip" type="button" data-action="mm-cat" data-v="${c}" aria-pressed="${m.categoria === c}">${c}</button>`).join("")}</div></div>
     <div class="field"><label for="mm_nombre">Nombre</label><input id="mm_nombre" data-mm="nombre" value="${esc(m.nombre)}"></div>
     <div class="field"><label for="mm_link">Link de compra</label><input id="mm_link" type="url" data-mm="link" value="${esc(m.link)}" placeholder="https://"></div>
-    <div class="field"><label for="mm_lugar">Dónde se compra</label><input id="mm_lugar" data-mm="lugar" value="${esc(m.lugar)}"></div>
+    ${selectProv(m.proveedorId, "mm")}
+    ${m.proveedorId === "otro" || (!m.proveedorId && m.lugar && !S.proveedores.length) ? `<div class="field"><label for="mm_lugar">¿Dónde lo compras?</label><input id="mm_lugar" data-mm="lugar" value="${esc(m.lugar)}"></div>` : ""}
     ${camposCompra(m, "mm")}
     ${url ? `<a class="buy" style="align-self:flex-start" href="${esc(url)}" target="_blank" rel="noopener">Abrir link de compra</a>` : ""}
     ${usan.length ? `<p class="muted small" style="margin:0">Lo usan ${usan.length} producto${usan.length > 1 ? "s" : ""}: ${usan.slice(0, 6).map(p => esc(p.nombre)).join(", ")}${usan.length > 6 ? "…" : ""}. Si cambias el precio, su costo se actualiza solo.</p>` : ""}
@@ -1177,14 +1246,14 @@ document.addEventListener("click", e => {
     case "video-prod": { const p = prodC(); const caps = S.contenido.filter(c => c.serie === "rebranding").map(c => +c.capitulo || 0);
       editContent(null, { serie: "rebranding", titulo: "Acompáñame a pasar de esto a esto: " + p.nombre, productoCodigo: p.codigo, capitulo: String(Math.max(0, ...caps) + 1) }); break; }
     case "edit-prod": editProd(+t.dataset.c); break;
-    case "ins-nuevo": insForm = { categoria: "", link: "", nombre: "", lugar: "", cantidadIngresada: "", presentacion: "unidades", precio: 0, cuentasPorGramo: "" }; drawProdIns(); break;
+    case "ins-nuevo": insForm = { proveedorId: "", categoria: "", link: "", nombre: "", lugar: "", cantidadIngresada: "", presentacion: "unidades", precio: 0, cuentasPorGramo: "" }; drawProdIns(); break;
     case "inf-pres": insForm.presentacion = v; drawProdIns(); break;
     case "mm-pres": editingMat.presentacion = v; drawMatForm(); break;
     case "ins-cancelar": insForm = null; drawProdIns(); break;
     case "ins-quitar": editing.insumos = insLinks(editing).filter(l => l.id !== +t.dataset.id); drawProdIns(); break;
     case "ins-crear": { const f = insForm; if (!f.nombre.trim()) { toast("Ponle nombre al insumo"); return; }
       if (!baseCantidad(f) || !num(f.precio)) { toast("Escribe la cantidad y el precio que pagaste"); return; }
-      const m = { id: Math.max(0, ...S.materia.map(x => x.id)) + 1, nombre: f.nombre.trim(), categoria: f.categoria, lugar: (f.lugar || lugarDeLink(f.link) || "").trim(), cantidad: baseCantidad(f), cantidadIngresada: dec(f.cantidadIngresada), presentacion: f.presentacion, precio: num(f.precio), link: f.link.trim(), cuentasPorGramo: num(f.cuentasPorGramo) || undefined };
+      const m = { id: Math.max(0, ...S.materia.map(x => x.id)) + 1, nombre: f.nombre.trim(), categoria: f.categoria, proveedorId: +f.proveedorId || undefined, lugar: (+f.proveedorId ? (S.proveedores.find(v => v.id === +f.proveedorId) || {}).nombre : (f.lugar || lugarDeLink(f.link) || "")).trim(), cantidad: baseCantidad(f), cantidadIngresada: dec(f.cantidadIngresada), presentacion: f.presentacion, precio: num(f.precio), link: f.link.trim(), cuentasPorGramo: num(f.cuentasPorGramo) || undefined };
       S.materia.push(m); guardar("materia", m); editing.insumos = [...insLinks(editing), { id: m.id, usa: 1 }]; insForm = null; drawProdIns(); toast(m.nombre + " quedó en Materia prima"); break; }
     case "ver-prod": verProd(+t.dataset.c); break;
     case "stock-det": { const p = prodC(); p.stock = Math.max(0, p.stock + (+t.dataset.d)); guardar("productos", p); render(); verProd(p.codigo); break; }
@@ -1197,8 +1266,19 @@ document.addEventListener("click", e => {
       guardar("productos", p); closeSheet(); render(); toast("Producto guardado"); break; }
     case "edit-mat": editMat(+t.dataset.id); break;
     case "new-mat": editMat(null); break;
+    case "mat-seg": ui.matSeg = v; ui.matQ = ""; render(); break;
+    case "new-prov": editProv(null); break;
+    case "ver-prov": verProv(+t.dataset.id); break;
+    case "edit-prov": editProv(+t.dataset.id); break;
+    case "quitar-logo": { const vieja = editingProv.logo; editingProv.logo = ""; if (vieja) sb.storage.from("fotos").remove([vieja]).catch(() => {}); const real = S.proveedores.find(x => x.id === editingProv.id); if (real) { real.logo = ""; guardar("proveedores", real); } drawProvLogo(); break; }
+    case "save-prov": { const v = editingProv; if (!v.nombre.trim()) { toast("Ponle nombre al proveedor"); return; } v.nombre = v.nombre.trim();
+      const i = S.proveedores.findIndex(x => x.id === v.id); if (i >= 0) S.proveedores[i] = v; else S.proveedores.push(v);
+      S.materia.filter(m => m.proveedorId === v.id && m.lugar !== v.nombre).forEach(m => { m.lugar = v.nombre; guardar("materia", m); });
+      guardar("proveedores", v); closeSheet(); ui.matSeg = "proveedores"; if (tab !== "materia") go("materia"); else render(); toast("Proveedor guardado"); break; }
+    case "copiar": { const txt = v; (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast("Copiado"), () => toast(txt)); break; }
     case "mm-cat": editingMat.categoria = editingMat.categoria === v ? "" : v; drawMatForm(); break;
     case "save-mat": { const m = editingMat; if (!m.nombre.trim()) { toast("Ponle nombre"); return; }
+      if (+m.proveedorId) { m.proveedorId = +m.proveedorId; m.lugar = (S.proveedores.find(v => v.id === m.proveedorId) || {}).nombre || m.lugar; } else delete m.proveedorId;
       m.cantidadIngresada = dec(m.cantidadIngresada); m.cantidad = baseCantidad(m) || m.cantidad; m.precio = num(m.precio); if (m.cuentasPorGramo) m.cuentasPorGramo = num(m.cuentasPorGramo);
       const i = S.materia.findIndex(x => x.id === m.id); if (i >= 0) S.materia[i] = m; else S.materia.push(m); guardar("materia", m); closeSheet(); render(); toast("Guardado"); break; }
     case "new-content": editContent(null); break;
@@ -1217,7 +1297,7 @@ document.addEventListener("click", e => {
     case "actualizar": buscarActualizacion(true); break;
     case "excel": descargarExcel(); break;
     case "respaldo": descargarRespaldo(); break;
-    case "logout": sb.auth.signOut().then(() => { S = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [] }; uid = null; iniciar(null); }); break;
+    case "logout": sb.auth.signOut().then(() => { S = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [], proveedores: [] }; uid = null; iniciar(null); }); break;
   }
 });
 document.addEventListener("keydown", e => {
@@ -1239,15 +1319,18 @@ document.addEventListener("input", e => {
   }
   if (t.dataset.pp && editing) { const k = t.dataset.pp; editing[k] = (k === "nombre" || k === "tipo") ? t.value : (k === "stock" ? (parseInt(t.value, 10) || 0) : num(t.value)); drawProdTot(); return; }
   if (t.dataset.mm && editingMat) { const k = t.dataset.mm; editingMat[k] = t.value;
-    if (k === "link") { const l = lugarDeLink(t.value), el = $id("mm_lugar"); if (l && el && !el.value) { editingMat.lugar = l; el.value = l; } }
+    if (k === "link") { const v = provPorLink(t.value), el = $id("mm_prov"); if (v && el && !el.value) { editingMat.proveedorId = v.id; el.value = String(v.id); } else { const l = lugarDeLink(t.value), le = $id("mm_lugar"); if (l && le && !le.value) { editingMat.lugar = l; le.value = l; } } }
+    if (k === "proveedorId") { drawMatForm(); return; }
     refrescarPU(editingMat, "mm"); return; }
   if (t.dataset.usa && editing) { const id = +t.dataset.usa, l = insLinks(editing).map(x => x.id === id ? { ...x, usa: dec(t.value) } : x); editing.insumos = l;
     const m = S.materia.find(x => x.id === id), s = $id("sub_" + id), un = $id("uni_" + id); if (m && s) s.textContent = $u(unitario(m) * dec(t.value)); if (m && un) un.textContent = unidadTxt(m, dec(t.value)); bloquearCostos(); return; }
   if (t.dataset.inf && insForm) { const k = t.dataset.inf; insForm[k] = t.value;
-    if (k === "link") { const l = lugarDeLink(t.value), el = $id("inf_lugar"); if (l && el && !el.value) { insForm.lugar = l; el.value = l; } }
+    if (k === "link") { const v = provPorLink(t.value), el = $id("inf_prov"); if (v && el && !el.value) { insForm.proveedorId = v.id; el.value = String(v.id); } }
+    if (k === "proveedorId") { drawProdIns(); return; }
     if (k === "categoria") { drawProdIns(); return; }
     refrescarPU(insForm, "inf"); return; }
   if (t.dataset.remate && remateDraft) { remateDraft.precio = t.value; return; }
+  if (t.dataset.pv && editingProv) { editingProv[t.dataset.pv] = t.value; return; }
   if (t.dataset.rc && recDraft) { recDraft[t.dataset.rc] = t.value; return; }
   if (t.dataset.iv && editingInv) { editingInv[t.dataset.iv] = t.dataset.iv === "valor" ? num(t.value) : t.value; return; }
   if (t.dataset.abono) { const p = S.pedidos.find(x => x.id === t.dataset.abono); if (p) { p.abono = num(t.value); clearTimeout(p._t); p._t = setTimeout(() => { delete p._t; guardar("pedidos", p); render(); }, 600); } return; }
@@ -1265,6 +1348,8 @@ document.addEventListener("change", e => {
   if (t.dataset.pp && editing && (t.dataset.pp === "nombre" || t.dataset.pp === "tipo")) { editing[t.dataset.pp] = t.value; drawProdTot(); }
   if (t.dataset.cc && editingC) editingC[t.dataset.cc] = t.value;
   if (t.id === "fileImport" && t.files && t.files[0]) importar(t.files[0]);
+  if (t.id === "pvLogoIn" && t.files && t.files[0] && editingProv) { const v = editingProv; subirLogo(v, t.files[0]).then(ok => { if (!ok) return;
+    const real = S.proveedores.find(x => x.id === v.id); if (real) { real.logo = v.logo; guardar("proveedores", real); render(); } if (editingProv === v) drawProvLogo(); toast("Logo guardado"); }); }
   if (t.id === "ppFotoIn" && t.files && t.files[0] && editing) { const p = editing; subirFoto(p, t.files[0]).then(ok => {
     if (!ok) return; const real = S.productos.find(x => x.codigo === p.codigo);
     if (real) { real.foto = p.foto; guardar("productos", real); render(); }

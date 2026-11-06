@@ -121,7 +121,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{ou
 
 /* Navegación */
 nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:25;background:var(--white);border-top:1.5px solid var(--line);
-  display:grid;grid-template-columns:repeat(6,1fr);padding-bottom:env(safe-area-inset-bottom,0px);
+  display:grid;grid-template-columns:repeat(7,1fr);padding-bottom:env(safe-area-inset-bottom,0px);
   padding-left:max(4px,env(safe-area-inset-left,0px));padding-right:max(4px,env(safe-area-inset-right,0px))}
 nav.tabs button{border:none;background:none;padding:8px 2px 9px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:500;color:var(--muted);cursor:pointer}
 nav.tabs svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
@@ -298,3 +298,16 @@ input[type="date"]::-webkit-date-and-time-value,input[type="time"]::-webkit-date
 .ins-row{display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:12px;background:var(--soft)}
 .usa-in{width:84px;border:1.5px solid var(--line);border-radius:10px;padding:7px 10px;background:var(--white);text-align:center}
 .field input.auto{background:var(--soft);color:var(--muted)}
+
+/* Barra de 7 pestañas */
+nav.tabs button{font-size:9.5px;padding-left:0;padding-right:0;letter-spacing:-.01em}
+nav.tabs svg{width:22px;height:22px}
+/* Proveedores */
+.prov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.prov-card{border:1.5px solid var(--line);background:var(--white);border-radius:var(--r);padding:14px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;cursor:pointer;min-width:0}
+.prov-card b{overflow-wrap:anywhere}
+.prov-card:active{background:var(--soft)}
+.logo-prov{flex:none;width:36px;height:36px;border-radius:50%;object-fit:cover;background:var(--rosa);color:var(--pink-press);display:grid;place-items:center;font-weight:700;font-size:15px;border:1.5px solid var(--line)}
+.logo-prov.sm{width:34px;height:34px;font-size:14px}
+.logo-prov.lg{width:64px;height:64px;font-size:26px}
+.logo-prov.xl{width:76px;height:76px;font-size:30px}
