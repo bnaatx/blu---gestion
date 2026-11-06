@@ -1057,7 +1057,7 @@ function editProd(codigo) {
     <div class="foto-edit" id="ppFoto"></div>
     <div class="field"><label for="pp_nombre">Nombre</label><input id="pp_nombre" data-pp="nombre" value="${esc(p.nombre)}"></div>
     <div class="grid2"><div class="field"><label for="pp_tipo">Tipo</label><select id="pp_tipo" data-pp="tipo">${TIPOS.map(t => `<option ${t === p.tipo ? "selected" : ""}>${t}</option>`).join("")}</select></div>${f("stock", "Stock")}</div>
-    <div class="field"><span class="lbl">Origen</span><div class="seg" id="ppHecho"><button type="button" data-action="pp-hecho" data-v="0" aria-pressed="${!esHecho(p)}">Hecho por Blu</button><button type="button" data-action="pp-hecho" data-v="1" aria-pressed="${esHecho(p)}">Reventa</button></div></div>
+    <div class="field"><span class="lbl">Origen</span><div class="seg" id="ppHecho"><button type="button" data-action="pp-hecho" data-v="0" aria-pressed="${!esHecho(p)}">Artesanal</button><button type="button" data-action="pp-hecho" data-v="1" aria-pressed="${esHecho(p)}">Reventa</button></div></div>
     <h3>Costos</h3>
     <div class="grid3 ${esHecho(p) ? "es-hecho" : ""}" id="ppCostos">${f("hilo", baseLbl(p), "solo-armo")}${f("dije", "Dije", "solo-armo")}${f("mostacillas", "Mostacillas", "solo-armo")}${f("compra", esHecho(p) ? "Lo compraste a" : "Compra")}${f("manoObra", "Mano de obra", "solo-armo")}</div>
     <div id="ppEmp"></div>
