@@ -211,7 +211,7 @@ document.addEventListener("visibilitychange", async () => {
 /* ---------- Navegación ---------- */
 let tab = "inicio";
 const now = new Date();
-let ui = { matSeg: "insumos", matQ: "", pedFiltro: "activos", ventasMes: "", ventasSeg: "ventas", ventasEst: "", invMes: "", stockQ: "", stockTipo: "", catSeg: "productos", catQ: "", remFiltro: "pendiente",
+let ui = { matSeg: "insumos", matQ: "", matCat: null, pedFiltro: "activos", ventasMes: "", ventasSeg: "ventas", ventasEst: "", invMes: "", stockQ: "", stockTipo: "", catSeg: "productos", catQ: "", remFiltro: "pendiente",
   cVista: "calendario", cMes: now.getFullYear() + "-" + pad(now.getMonth() + 1), cDia: "", cSerie: "" };
 const TITLES = { inicio: "Inicio", pedidos: "Pedidos", ventas: "Ventas", stock: "Inventario", catalogo: "Catálogo", materia: "Materia prima", contenido: "Contenido" };
 function go(t) { tab = t; render(); window.scrollTo(0, 0); }
@@ -480,12 +480,16 @@ function vMateria() {
       return `<button type="button" class="prov-card" data-action="ver-prov" data-id="${v.id}" data-s="${esc(s)}"${q && !s.includes(q) ? " hidden" : ""}>${logo(v, "lg")}<b>${esc(v.nombre)}</b><span class="muted small">${esc(igHandle(v.instagram))}</span><span class="tag">${n} insumo${n === 1 ? "" : "s"}</span></button>`; }).join("")
       || `<div class="empty" style="grid-column:1/-1"><div class="iso"></div><b>Aún no tienes proveedores</b><span class="small">Toca “+ Proveedor” para agregar el primero.</span></div>`}</div>`;
   }
-  const grupos = ["", ...CATS].map(c => [c, S.materia.filter(m => catDe(m) === c).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))]).filter(([, l]) => l.length);
+  const todosG = [...CATS, ""].map(c => [c, S.materia.filter(m => catDe(m) === c).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))]).filter(([, l]) => l.length);
+  if (ui.matCat != null && !todosG.some(([c]) => c === ui.matCat)) ui.matCat = null;
+  const grupos = ui.matCat == null ? todosG : todosG.filter(([c]) => c === ui.matCat);
+  const chips = `<div class="scroller"><button class="chip" type="button" data-action="mat-cat" data-v="*" aria-pressed="${ui.matCat == null}">Todos</button>${todosG.map(([c, l]) => `<button class="chip" type="button" data-action="mat-cat" data-v="${esc(c)}" aria-pressed="${ui.matCat === c}">${c || "Sin categoría"} (${l.length})</button>`).join("")}</div>`;
   const fila = m => { const url = safeUrl(m.link), ic = infoCat(m), cant = dec(m.cantidadIngresada) || dec(m.cantidad), pres = m.presentacion === "docenas" ? (cant === 1 ? "docena" : "docenas") : (cant === 1 ? ic.u : ic.pl), s = buscaEn(m.nombre + " " + provNombre(m) + " " + catDe(m));
     return `<div class="prow tappable" data-action="edit-mat" data-id="${m.id}" role="button" tabindex="0" data-s="${esc(s)}"${q && !s.includes(q) ? " hidden" : ""}>
     ${logo(provDe(m) || { nombre: provNombre(m) }, "sm")}<div class="grow"><div class="name">${esc(m.nombre)}</div><div class="muted small">${esc(provNombre(m))} · ${decTxt(cant)} ${pres} por ${$(m.precio)} · <b class="num">${$u(unitario(m))}</b> ${ic.c}</div></div>
     ${url ? `<a class="buy" href="${esc(url)}" target="_blank" rel="noopener">Comprar</a>` : ""}</div>`; };
   return `${tabs}<div class="row"><input class="search grow" id="matQ" data-input="matQ" placeholder="Buscar insumo o proveedor" value="${esc(ui.matQ)}" aria-label="Buscar insumo"><button class="btn" type="button" data-action="new-mat">+ Insumo</button></div>
+  ${chips}
   ${grupos.length ? grupos.map(([c, l]) => `<h3 style="margin-top:4px">${c || "Sin categoría"} <span class="muted">(${l.length})</span></h3>
     ${c ? "" : `<p class="muted small" style="margin:0">Toca cada uno para asignarle su categoría.</p>`}
     <section class="card" style="padding-block:4px">${l.map(fila).join("")}</section>`).join("") : '<div class="empty">Todavía no tienes materia prima</div>'}`;
@@ -1269,6 +1273,7 @@ document.addEventListener("click", e => {
       guardar("productos", p); closeSheet(); render(); toast("Producto guardado"); break; }
     case "edit-mat": editMat(+t.dataset.id); break;
     case "new-mat": editMat(null); break;
+    case "mat-cat": ui.matCat = v === "*" ? null : v; render(); break;
     case "mat-seg": ui.matSeg = v; ui.matQ = ""; render(); break;
     case "new-prov": editProv(null); break;
     case "ver-prov": verProv(+t.dataset.id); break;
