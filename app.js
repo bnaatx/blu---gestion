@@ -461,6 +461,8 @@ function vCatalogo() {
 
 /* ---------- Materia prima: insumos y proveedores ---------- */
 const provDe = m => S.proveedores.find(v => v.id === m.proveedorId);
+const igUrl = v => { const h = String(v || "").trim().replace(/^@/, ""); if (!h) return ""; if (/^https?:\/\//i.test(h)) return safeUrl(h); return "https://instagram.com/" + h.replace(/^(www\.)?instagram\.com\//i, "").replace(/\/.*$/, ""); };
+const igHandle = v => { const u = igUrl(v); return u ? "@" + u.replace(/\/+$/, "").split("/").pop() : ""; };
 const provNombre = m => (provDe(m) || {}).nombre || m.lugar || "";
 const logoUrl = v => v && v.logo ? window.BLU_CONFIG.supabaseUrl + "/storage/v1/object/public/fotos/" + v.logo : "";
 const logo = (v, cls = "") => { const u = logoUrl(v); return u ? `<img class="logo-prov ${cls}" src="${esc(u)}" alt="" loading="lazy">` : `<span class="logo-prov ph ${cls}" aria-hidden="true">${esc((v && v.nombre || "?").trim().charAt(0).toUpperCase())}</span>`; };
@@ -474,8 +476,8 @@ function vMateria() {
   if (seg === "proveedores") {
     const lista = S.proveedores.slice().sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
     return `${tabs}<div class="row"><input class="search grow" id="matQ" data-input="matQ" placeholder="Buscar proveedor" value="${esc(ui.matQ)}" aria-label="Buscar proveedor"><button class="btn" type="button" data-action="new-prov">+ Proveedor</button></div>
-    <div class="prov-grid">${lista.map(v => { const n = S.materia.filter(m => m.proveedorId === v.id).length, s = buscaEn(v.nombre + " " + (v.lugar || ""));
-      return `<button type="button" class="prov-card" data-action="ver-prov" data-id="${v.id}" data-s="${esc(s)}"${q && !s.includes(q) ? " hidden" : ""}>${logo(v, "lg")}<b>${esc(v.nombre)}</b><span class="muted small">${esc(v.lugar || "")}</span><span class="tag">${n} insumo${n === 1 ? "" : "s"}</span></button>`; }).join("")
+    <div class="prov-grid">${lista.map(v => { const n = S.materia.filter(m => m.proveedorId === v.id).length, s = buscaEn(v.nombre + " " + (v.instagram || ""));
+      return `<button type="button" class="prov-card" data-action="ver-prov" data-id="${v.id}" data-s="${esc(s)}"${q && !s.includes(q) ? " hidden" : ""}>${logo(v, "lg")}<b>${esc(v.nombre)}</b><span class="muted small">${esc(igHandle(v.instagram))}</span><span class="tag">${n} insumo${n === 1 ? "" : "s"}</span></button>`; }).join("")
       || `<div class="empty" style="grid-column:1/-1"><div class="iso"></div><b>Aún no tienes proveedores</b><span class="small">Toca “+ Proveedor” para agregar el primero.</span></div>`}</div>`;
   }
   const grupos = ["", ...CATS].map(c => [c, S.materia.filter(m => catDe(m) === c).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))]).filter(([, l]) => l.length);
@@ -493,14 +495,15 @@ function verProv(id) {
   const v = S.proveedores.find(x => x.id === id); if (!v) return;
   const ins = S.materia.filter(m => m.proveedorId === v.id).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
   const cel = String(v.celular || "").replace(/[^\d]/g, ""), wa = cel ? "https://wa.me/" + (cel.length === 10 ? "57" + cel : cel) : "";
-  const web = safeUrl(v.web), mapa = v.direccion ? "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(v.direccion + (v.lugar ? ", " + v.lugar : "")) : "";
+  const web = safeUrl(v.web), ig = igUrl(v.instagram), mapa = v.direccion ? "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(v.direccion) : "";
   openSheet(v.nombre, `
-    <div class="row" style="gap:14px">${logo(v, "xl")}<div class="grow"><b style="font-size:18px">${esc(v.nombre)}</b><div class="muted">${esc(v.lugar || "")}</div></div></div>
+    <div class="row" style="gap:14px">${logo(v, "xl")}<div class="grow"><b style="font-size:18px">${esc(v.nombre)}</b><div class="muted">${esc(igHandle(v.instagram))}</div></div></div>
     <section class="card" style="display:flex;flex-direction:column;gap:10px">
       ${cel ? `<div class="row between" style="gap:8px"><div><span class="muted small">Celular</span><br><b class="num" style="user-select:all">${esc(v.celular)}</b></div><div class="row" style="gap:6px"><a class="buy" href="${wa}" target="_blank" rel="noopener">WhatsApp</a><button class="btn sm ghost" type="button" data-action="copiar" data-v="${esc(v.celular)}">Copiar</button></div></div>` : ""}
       ${v.direccion ? `<div class="row between" style="gap:8px"><div class="grow"><span class="muted small">Dirección</span><br>${esc(v.direccion)}</div><a class="buy" href="${esc(mapa)}" target="_blank" rel="noopener">Mapa</a></div>` : ""}
-      ${web ? `<div class="row between" style="gap:8px"><div class="grow" style="min-width:0"><span class="muted small">Página o Instagram</span><br><span style="overflow-wrap:anywhere">${esc(web)}</span></div><a class="buy" href="${esc(web)}" target="_blank" rel="noopener">Abrir</a></div>` : ""}
-      ${!cel && !v.direccion && !web ? `<p class="muted small" style="margin:0">Sin datos de contacto todavía.</p>` : ""}
+      ${web ? `<div class="row between" style="gap:8px"><div class="grow" style="min-width:0"><span class="muted small">Página web</span><br><span style="overflow-wrap:anywhere">${esc(web)}</span></div><a class="buy" href="${esc(web)}" target="_blank" rel="noopener">Abrir</a></div>` : ""}
+      ${ig ? `<div class="row between" style="gap:8px"><div class="grow" style="min-width:0"><span class="muted small">Instagram</span><br>${esc(igHandle(v.instagram))}</div><a class="buy" href="${esc(ig)}" target="_blank" rel="noopener">Abrir</a></div>` : ""}
+      ${!cel && !v.direccion && !web && !ig ? `<p class="muted small" style="margin:0">Sin datos de contacto todavía.</p>` : ""}
     </section>
     <h3>Insumos que le compras (${ins.length})</h3>
     ${ins.length ? `<section class="card" style="padding-block:4px">${ins.map(m => { const u = safeUrl(m.link); return `<div class="prow"><div class="grow"><div class="name">${esc(m.nombre)}</div><div class="muted small">${catDe(m) || "Sin categoría"} · <b class="num">${$u(unitario(m))}</b> ${infoCat(m).c}</div></div>${u ? `<a class="buy" href="${esc(u)}" target="_blank" rel="noopener">Comprar</a>` : ""}</div>`; }).join("")}</section>` : `<p class="muted small" style="margin:0">Todavía no hay insumos de este proveedor.</p>`}
@@ -508,14 +511,14 @@ function verProv(id) {
 }
 function editProv(id) {
   const nuevo = id == null;
-  const v = nuevo ? { id: Math.max(0, ...S.proveedores.map(x => x.id)) + 1, nombre: "", lugar: "", celular: "", direccion: "", web: "", logo: "" } : { ...S.proveedores.find(x => x.id === id) };
+  const v = nuevo ? { id: Math.max(0, ...S.proveedores.map(x => x.id)) + 1, nombre: "", celular: "", direccion: "", instagram: "", web: "", logo: "" } : { ...S.proveedores.find(x => x.id === id) };
   openSheet(nuevo ? "Nuevo proveedor" : "Editar proveedor", `
     <div class="row" style="gap:14px;align-items:center" id="provLogo"></div>
     <div class="field"><label for="pv_nombre">Nombre</label><input id="pv_nombre" data-pv="nombre" value="${esc(v.nombre)}" placeholder="Ej: Bisutería Whims"></div>
-    <div class="field"><label for="pv_lugar">Lugar</label><input id="pv_lugar" data-pv="lugar" value="${esc(v.lugar)}" placeholder="Ej: Bogotá, San Victorino · o Tienda en línea"></div>
     <div class="field"><label for="pv_cel">Celular de contacto</label><input id="pv_cel" type="tel" data-pv="celular" value="${esc(v.celular)}"></div>
     <div class="field"><label for="pv_dir">Dirección</label><input id="pv_dir" data-pv="direccion" value="${esc(v.direccion)}"></div>
-    <div class="field"><label for="pv_web">Página o Instagram (opcional)</label><input id="pv_web" type="url" data-pv="web" value="${esc(v.web)}" placeholder="https://"></div>
+    <div class="field"><label for="pv_ig">Instagram</label><input id="pv_ig" data-pv="instagram" value="${esc(v.instagram || "")}" placeholder="@usuario" autocapitalize="off"></div>
+    <div class="field"><label for="pv_web">Página web</label><input id="pv_web" type="url" data-pv="web" value="${esc(v.web)}" placeholder="https://"></div>
     <button class="btn block" type="button" data-action="save-prov">Guardar proveedor</button>`, () => { editingProv = v; drawProvLogo(); });
 }
 function drawProvLogo() {
