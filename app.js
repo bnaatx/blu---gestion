@@ -461,8 +461,8 @@ function vCatalogo() {
 
 /* ---------- Materia prima: insumos y proveedores ---------- */
 const provDe = m => S.proveedores.find(v => v.id === m.proveedorId);
-const igUrl = v => { const h = String(v || "").trim().replace(/^@/, ""); if (!h) return ""; if (/^https?:\/\//i.test(h)) return safeUrl(h); return "https://instagram.com/" + h.replace(/^(www\.)?instagram\.com\//i, "").replace(/\/.*$/, ""); };
-const igHandle = v => { const u = igUrl(v); return u ? "@" + u.replace(/\/+$/, "").split("/").pop() : ""; };
+const igUrl = v => { const h = String(v || "").trim().replace(/^@/, ""); if (!h) return ""; if (/^https?:\/\//i.test(h)) return safeUrl(h); return "https://instagram.com/" + h.replace(/^(www\.)?instagram\.com\//i, "").replace(/[\/?#].*$/, ""); };
+const igHandle = v => { const u = igUrl(v); return u ? "@" + u.replace(/[?#].*$/, "").replace(/\/+$/, "").split("/").pop() : ""; };
 const provNombre = m => (provDe(m) || {}).nombre || m.lugar || "";
 const logoUrl = v => v && v.logo ? window.BLU_CONFIG.supabaseUrl + "/storage/v1/object/public/fotos/" + v.logo : "";
 const logo = (v, cls = "") => { const u = logoUrl(v); return u ? `<img class="logo-prov ${cls}" src="${esc(u)}" alt="" loading="lazy">` : `<span class="logo-prov ph ${cls}" aria-hidden="true">${esc((v && v.nombre || "?").trim().charAt(0).toUpperCase())}</span>`; };
