@@ -293,3 +293,8 @@ input[type="date"]::-webkit-date-and-time-value,input[type="time"]::-webkit-date
 .tag.remate{background:#FFE7C2;color:#8A4B00;display:inline-block;margin-top:4px}
 .rm-st{grid-template-columns:repeat(4,1fr)}
 .rm-st button.rem[aria-pressed="true"]{color:#8A4B00}
+
+/* Materia prima por categoría */
+.ins-row{display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:12px;background:var(--soft)}
+.usa-in{width:84px;border:1.5px solid var(--line);border-radius:10px;padding:7px 10px;background:var(--white);text-align:center}
+.field input.auto{background:var(--soft);color:var(--muted)}

@@ -84,7 +84,37 @@ async function subirFoto(p, file) {
 const n0 = v => typeof v === "number" ? v : num(v);
 /* Mano de obra por categoría (tomada del Excel de costos de Blu) */
 const MO_CAT = { "Pulsera": 4000, "Manilla individual": 6000, "Manillas parejas": 12000, "Manillas trios": 18000, "Cadenita individual": 4000, "Cadenitas parejas": 8000, "Collar individual": 8000, "Collares pareja": 16000, "Anillos": 4000, "Anillos pareja": 4000 };
-function costoProd(p) { return n0(p.hilo) + n0(p.dije) + n0(p.mostacillas) + n0(p.compra) + n0(p.manoObra) + n0(p.empaque); }
+/* Materia prima por categoría. Dije, pasador, cadena, empaque y otros se compran por unidad (o docena);
+   el hilo por metros y la mostacilla por gramos. */
+const CAT_INS = {
+  "Dije": { u: "unidad", pl: "unidades", c: "c/u", doc: true },
+  "Pasador": { u: "unidad", pl: "unidades", c: "c/u", doc: true },
+  "Cadena": { u: "unidad", pl: "unidades", c: "c/u", doc: true },
+  "Hilo": { u: "metro", pl: "metros", c: "por metro", doc: false },
+  "Mostacilla": { u: "gramo", pl: "gramos", c: "por gramo", doc: false },
+  "Empaque": { u: "unidad", pl: "unidades", c: "c/u", doc: true },
+  "Otro": { u: "unidad", pl: "unidades", c: "c/u", doc: true },
+};
+const CATS = Object.keys(CAT_INS);
+const catDe = m => CAT_INS[m.categoria] ? m.categoria : "";
+const infoCat = m => CAT_INS[catDe(m)] || CAT_INS.Otro;
+/* números con decimales: "0,5" "1.5" "1.000" */
+const dec = v => { const s = String(v ?? "").trim().replace(/\s/g, "").replace(/\.(?=\d{3}(?:\D|$))/g, "").replace(",", "."); const n = parseFloat(s); return isFinite(n) && n > 0 ? n : 0; };
+const decTxt = n => n ? String(Math.round(n * 1000) / 1000).replace(".", ",") : "";
+const unitario = m => dec(m.cantidad) ? n0(m.precio) / dec(m.cantidad) : 0;
+const $u = n => n > 0 && n < 1000 && Math.round(n * 10) !== Math.round(n) * 10 ? "$ " + n.toLocaleString("es-CO", { maximumFractionDigits: 1 }) : $(n);
+const insLinks = p => (p.insumos || []).map(x => typeof x === "object" && x ? x : { id: x, usa: 1 });
+const usaInsumos = p => insLinks(p).some(l => S.materia.some(m => m.id === l.id));
+function materialesDe(p) {
+  const r = { hilo: 0, dije: 0, mostacillas: 0, compra: 0 };
+  insLinks(p).forEach(({ id, usa }) => { const m = S.materia.find(x => x.id === id); if (!m) return;
+    const v = unitario(m) * dec(usa), c = catDe(m);
+    if (c === "Hilo") r.hilo += v; else if (c === "Dije") r.dije += v; else if (c === "Mostacilla") r.mostacillas += v; else r.compra += v; });
+  Object.keys(r).forEach(k => r[k] = Math.round(r[k]));
+  return r;
+}
+const costosDe = p => usaInsumos(p) ? materialesDe(p) : { hilo: n0(p.hilo), dije: n0(p.dije), mostacillas: n0(p.mostacillas), compra: n0(p.compra) };
+function costoProd(p) { const c = costosDe(p); return c.hilo + c.dije + c.mostacillas + c.compra + n0(p.manoObra) + n0(p.empaque); }
 const remo = p => p.remodelacion || "pendiente";
 const activos = () => S.productos.filter(p => remo(p) !== "archivado");
 
@@ -401,10 +431,14 @@ function vCatalogo() {
       ${enRemate(p) ? `<span class="tag remate">Remate ${$(p.precioRemate)}</span>` : ""}${gm < 0 ? `<span class="tag loss">Pérdida al por mayor ${$(gm)}</span>` : ""}${!p.menor ? `<span class="tag loss">Sin precio</span>` : ""}</div>
       <div class="prices"><span>Costo</span><span>Mayor</span><span>Detal</span><b>${$(c)}</b><b>${$(p.mayor)}</b><b>${$(p.menor)}</b></div></div>`; }).join("") || '<div class="empty">Sin resultados</div>'}</section>`;
   } else if (seg === "materia") {
-    const lista = S.materia;
-    body = `<section class="card" style="padding-block:4px">${lista.map(m => { const url = safeUrl(m.link); return `<div class="prow tappable" data-action="edit-mat" data-id="${m.id}" role="button" tabindex="0" data-s="${esc(buscaEn(m.nombre + " " + m.lugar))}"${q && !buscaEn(m.nombre + " " + m.lugar).includes(q) ? " hidden" : ""}>
-      <div class="grow"><div class="name">${esc(m.nombre)}</div><div class="muted small">${esc(m.lugar)} · ${m.cantidad} unid. por ${$(m.precio)} · <b class="num">${$(m.cantidad ? m.precio / m.cantidad : 0)}</b> c/u</div></div>
-      ${url ? `<a class="buy" href="${esc(url)}" target="_blank" rel="noopener">Comprar</a>` : ""}</div>`; }).join("") || '<div class="empty">Sin resultados</div>'}</section>`;
+    const grupos = ["", ...CATS].map(c => [c, S.materia.filter(m => catDe(m) === c).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))]).filter(([, l]) => l.length);
+    const fila = m => { const url = safeUrl(m.link), ic = infoCat(m), cant = dec(m.cantidadIngresada) || dec(m.cantidad), pres = m.presentacion === "docenas" ? (cant === 1 ? "docena" : "docenas") : (cant === 1 ? ic.u : ic.pl);
+      return `<div class="prow tappable" data-action="edit-mat" data-id="${m.id}" role="button" tabindex="0" data-s="${esc(buscaEn(m.nombre + " " + m.lugar + " " + catDe(m)))}"${q && !buscaEn(m.nombre + " " + m.lugar + " " + catDe(m)).includes(q) ? " hidden" : ""}>
+      <div class="grow"><div class="name">${esc(m.nombre)}</div><div class="muted small">${esc(m.lugar)} · ${decTxt(cant)} ${pres} por ${$(m.precio)} · <b class="num">${$u(unitario(m))}</b> ${ic.c}</div></div>
+      ${url ? `<a class="buy" href="${esc(url)}" target="_blank" rel="noopener">Comprar</a>` : ""}</div>`; };
+    body = grupos.length ? grupos.map(([c, l]) => `<h3 style="margin-top:4px">${c || "Sin categoría"} <span class="muted">(${l.length})</span></h3>
+      ${c ? "" : `<p class="muted small" style="margin:0">Toca cada uno para asignarle su categoría.</p>`}
+      <section class="card" style="padding-block:4px">${l.map(fila).join("")}</section>`).join("") : '<div class="empty">Todavía no tienes materia prima</div>';
   } else {
     const todos = S.productos, arch = todos.filter(p => remo(p) === "archivado").length, base = todos.filter(p => remo(p) === "pendiente" || remo(p) === "remodelado").length;
     const hechos = todos.filter(p => remo(p) === "remodelado").length;
@@ -732,7 +766,7 @@ function drawEditLineas() {
 }
 
 /* Materia prima de cada producto: se enlaza con la lista de Catálogo → Materia prima */
-const insumosDe = p => (p.insumos || []).map(id => S.materia.find(m => m.id === id)).filter(Boolean);
+const insumosDe = p => insLinks(p).map(l => S.materia.find(m => m.id === l.id)).filter(Boolean);
 function lugarDeLink(u) {
   const h = (String(u).match(/^https?:\/\/([^/]+)/i) || [])[1] || "";
   const d = h.replace(/^www\.|^m\.|^api-/, "").toLowerCase();
@@ -741,29 +775,56 @@ function lugarDeLink(u) {
   return d ? d.split(".")[0].toUpperCase() : "";
 }
 let insForm = null;
+const opcionesCat = sel => `<option value="">Sin categoría</option>` + CATS.map(c => `<option ${c === sel ? "selected" : ""}>${c}</option>`).join("");
+function camposCompra(f, pre) {
+  const ic = CAT_INS[f.categoria] || CAT_INS.Otro, base = (ic.doc && f.presentacion === "docenas" ? 12 : 1) * dec(f.cantidadIngresada);
+  const pu = base ? num(f.precio) / base : 0;
+  return `<div class="grid2"><div class="field"><label for="${pre}_cant">Cantidad comprada</label><input id="${pre}_cant" inputmode="decimal" data-${pre}="cantidadIngresada" value="${esc(decTxt(dec(f.cantidadIngresada)))}" placeholder="Ej: 50"></div>
+    <div class="field"><label for="${pre}_precio">Precio total</label><input id="${pre}_precio" inputmode="numeric" class="money-in" data-${pre}="precio" value="${miles(f.precio)}" placeholder="0"></div></div>
+    ${ic.doc ? `<div class="seg" role="group" aria-label="Viene por"><button type="button" data-action="${pre}-pres" data-v="unidades" aria-pressed="${f.presentacion !== "docenas"}">Unidades</button><button type="button" data-action="${pre}-pres" data-v="docenas" aria-pressed="${f.presentacion === "docenas"}">Docenas</button></div>`
+      : `<p class="muted small" style="margin:0">Escribe la cantidad en ${ic.pl}.</p>`}
+    ${f.categoria === "Mostacilla" ? `<div class="field"><label for="${pre}_cpg">Cuentas por gramo (opcional)</label><input id="${pre}_cpg" inputmode="numeric" data-${pre}="cuentasPorGramo" value="${f.cuentasPorGramo || ""}" placeholder="Cuenta las que caben en 1 gramo"></div>` : ""}
+    <div class="totals"><div class="t"><span>Te sale a</span><span id="${pre}_pu">${pu ? $u(pu) + " " + ic.c : "—"}</span></div></div>`;
+}
+const baseCantidad = f => ((CAT_INS[f.categoria] || CAT_INS.Otro).doc && f.presentacion === "docenas" ? 12 : 1) * dec(f.cantidadIngresada);
+function refrescarPU(f, pre) { const el = $id(pre + "_pu"); if (!el) return; const ic = CAT_INS[f.categoria] || CAT_INS.Otro, b = baseCantidad(f); el.textContent = b && num(f.precio) ? $u(num(f.precio) / b) + " " + ic.c : "—"; }
 function drawProdIns() {
   const box = $id("ppIns"); if (!box || !editing) return;
-  const ya = insumosDe(editing), libres = S.materia.filter(m => !(editing.insumos || []).includes(m.id)).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
-  box.innerHTML = `${ya.length ? `<div class="list">${ya.map(m => { const u = safeUrl(m.link); return `<div class="row between" style="gap:8px;padding:8px 10px;border-radius:12px;background:var(--soft)">
-      <div class="grow"><b>${esc(m.nombre)}</b><div class="muted small">${esc(m.lugar)} · ${$(m.cantidad ? m.precio / m.cantidad : 0)} c/u</div></div>
-      ${u ? `<a class="buy" href="${esc(u)}" target="_blank" rel="noopener">Comprar</a>` : ""}
-      <button class="icon-btn" type="button" data-action="ins-quitar" data-id="${m.id}" aria-label="Quitar ${esc(m.nombre)}">×</button></div>`; }).join("")}</div>`
-    : `<p class="muted small" style="margin:0">Todavía no le has enlazado materia prima.</p>`}
-  ${libres.length ? `<div class="field"><label for="ppInsSel">Agregar de tu materia prima</label><select id="ppInsSel" data-ins="sel"><option value="">Escoge un insumo…</option>${libres.map(m => `<option value="${m.id}">${esc(m.nombre)} · ${esc(m.lugar)}</option>`).join("")}</select></div>` : ""}
+  const links = insLinks(editing), usados = links.map(l => l.id);
+  const libres = S.materia.filter(m => !usados.includes(m.id));
+  const grupos = ["", ...CATS].map(c => [c, libres.filter(m => catDe(m) === c).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))]).filter(([, l]) => l.length);
+  box.innerHTML = `${links.length ? `<div class="list">${links.map(l => { const m = S.materia.find(x => x.id === l.id); if (!m) return ""; const u = safeUrl(m.link), ic = infoCat(m), usa = dec(l.usa);
+      return `<div class="ins-row">
+        <div class="row between" style="gap:8px"><div class="grow"><b>${esc(m.nombre)}</b><div class="muted small">${catDe(m) || "Sin categoría"} · ${$u(unitario(m))} ${ic.c}</div></div>
+        ${u ? `<a class="buy" href="${esc(u)}" target="_blank" rel="noopener">Comprar</a>` : ""}
+        <button class="icon-btn" type="button" data-action="ins-quitar" data-id="${m.id}" aria-label="Quitar ${esc(m.nombre)}">×</button></div>
+        <div class="row" style="gap:8px"><label class="small muted" for="usa_${m.id}">Usa</label><input id="usa_${m.id}" class="usa-in" inputmode="decimal" data-usa="${m.id}" value="${esc(decTxt(usa))}">
+        <span class="small muted" id="uni_${m.id}">${unidadTxt(m, usa)}</span><b class="num" style="margin-left:auto" id="sub_${m.id}">${$u(unitario(m) * usa)}</b></div></div>`; }).join("")}</div>
+      <p class="muted small" style="margin:0">El costo de materiales del producto se calcula con esta materia prima.</p>`
+    : `<p class="muted small" style="margin:0">Todavía no le has enlazado materia prima. Mientras tanto se usan los costos que escribiste arriba.</p>`}
+  ${grupos.length ? `<div class="field"><label for="ppInsSel">Agregar de tu materia prima</label><select id="ppInsSel" data-ins="sel"><option value="">Escoge un insumo…</option>${grupos.map(([c, l]) => `<optgroup label="${c || "Sin categoría"}">${l.map(m => `<option value="${m.id}">${esc(m.nombre)} · ${$u(unitario(m))} ${infoCat(m).c}</option>`).join("")}</optgroup>`).join("")}</select></div>` : ""}
   ${insForm ? `<div class="card" style="display:flex;flex-direction:column;gap:10px">
-      <div class="field"><label for="in_link">Link de compra</label><input id="in_link" type="url" data-inf="link" value="${esc(insForm.link)}" placeholder="Pega el link de SHEIN, Temu, Santorini…"></div>
-      <div class="field"><label for="in_nombre">Nombre</label><input id="in_nombre" data-inf="nombre" value="${esc(insForm.nombre)}" placeholder="Ej: Dije girasol dorado"></div>
-      <div class="grid3"><div class="field"><label for="in_lugar">Dónde</label><input id="in_lugar" data-inf="lugar" value="${esc(insForm.lugar)}"></div>
-        <div class="field"><label for="in_cant">Cantidad</label><input id="in_cant" inputmode="numeric" data-inf="cantidad" value="${insForm.cantidad || ""}" placeholder="1"></div>
-        <div class="field"><label for="in_precio">Precio total</label><input id="in_precio" inputmode="numeric" class="money-in" data-inf="precio" value="${miles(insForm.precio)}" placeholder="0"></div></div>
+      <div class="field"><label for="inf_cat">Categoría</label><select id="inf_cat" data-inf="categoria">${opcionesCat(insForm.categoria)}</select></div>
+      <div class="field"><label for="inf_link">Link de compra</label><input id="inf_link" type="url" data-inf="link" value="${esc(insForm.link)}" placeholder="Pega el link de SHEIN, Temu, Santorini…"></div>
+      <div class="grid2"><div class="field"><label for="inf_nombre">Nombre</label><input id="inf_nombre" data-inf="nombre" value="${esc(insForm.nombre)}" placeholder="Ej: Dije girasol"></div>
+        <div class="field"><label for="inf_lugar">Dónde</label><input id="inf_lugar" data-inf="lugar" value="${esc(insForm.lugar)}"></div></div>
+      ${camposCompra(insForm, "inf")}
       <div class="row" style="gap:8px"><button class="btn grow" type="button" data-action="ins-crear">Agregar a materia prima</button><button class="btn ghost" type="button" data-action="ins-cancelar">Cancelar</button></div>
     </div>` : `<button class="btn block line" type="button" data-action="ins-nuevo">+ Nuevo insumo con link</button>`}`;
+  bloquearCostos();
+}
+const unidadTxt = (m, usa) => { const ic = infoCat(m); return (usa === 1 ? ic.u : ic.pl) + (catDe(m) === "Mostacilla" && m.cuentasPorGramo ? " ≈ " + Math.round(usa * m.cuentasPorGramo) + " cuentas" : ""); };
+/* Con materia prima enlazada, los campos de hilo, dije, mostacillas y compra se llenan solos */
+function bloquearCostos() {
+  if (!editing) return; const auto = usaInsumos(editing), mat = auto ? materialesDe(editing) : null;
+  ["hilo", "dije", "mostacillas", "compra"].forEach(k => { const el = $id("pp_" + k); if (!el) return; el.readOnly = auto; el.classList.toggle("auto", auto); if (auto) el.value = miles(mat[k]) || "0"; });
+  drawProdTot();
 }
 
 /* Remate: últimas unidades más baratas; al venderse la última, el producto se archiva solo */
 const ultimaVenta = p => S.pedidos.filter(x => x.estado !== "perdido" && x.lineas.some(l => l.codigo === p.codigo)).map(x => x.fecha).sort().pop() || "";
 function sugerenciaRemate(p) {
-  const directo = n0(p.hilo) + n0(p.dije) + n0(p.mostacillas) + n0(p.compra) + n0(p.empaque);
+  const cd = costosDe(p), directo = cd.hilo + cd.dije + cd.mostacillas + cd.compra + n0(p.empaque);
   const base = Math.round(n0(p.menor) * 0.6 / 1000) * 1000;
   return Math.max(base, Math.ceil(directo / 1000) * 1000, 5000);
 }
@@ -783,7 +844,7 @@ function vSugeridosRemate() {
 let remateDraft = null;
 function pedirPrecioRemate(p) {
   remateDraft = { codigo: p.codigo, precio: n0(p.precioRemate) || sugerenciaRemate(p) };
-  const directo = n0(p.hilo) + n0(p.dije) + n0(p.mostacillas) + n0(p.compra) + n0(p.empaque);
+  const cd = costosDe(p), directo = cd.hilo + cd.dije + cd.mostacillas + cd.compra + n0(p.empaque);
   openSheet("Precio de remate", `
     <div class="row" style="gap:10px">${thumb(p, "lg")}<div><b>${esc(p.nombre)}</b><div class="muted small">${esc(p.tipo)} · ${p.stock} en stock</div></div></div>
     <div class="totals"><div><span>Precio normal</span><span>${$(p.menor)}</span></div><div><span>Lo que pagaste en materiales y empaque</span><span>${$(directo)}</span></div></div>
@@ -799,7 +860,8 @@ function verProd(codigo) {
   const ventas = S.pedidos.filter(x => x.estado !== "perdido").flatMap(x => x.lineas.filter(l => l.codigo === p.codigo).map(l => ({ ...l, fecha: x.fecha })));
   const vendidas = ventas.reduce((a, l) => a + n0(l.cantidad), 0), ingreso = ventas.reduce((a, l) => a + n0(l.cantidad) * n0(l.precio), 0);
   const ultima = ventas.map(l => l.fecha).sort().pop();
-  const costos = [["Hilo", p.hilo], ["Dije", p.dije], ["Mostacillas", p.mostacillas], ["Compra", p.compra], ["Mano de obra", p.manoObra], ["Empaque", p.empaque]].filter(([, v]) => n0(v));
+  const cd = costosDe(p);
+  const costos = [["Hilo", cd.hilo], ["Dije", cd.dije], ["Mostacillas", cd.mostacillas], [usaInsumos(p) ? "Pasadores, cadenas y otros" : "Compra", cd.compra], ["Mano de obra", p.manoObra], ["Empaque", p.empaque]].filter(([, v]) => n0(v));
   openSheet(p.nombre, `
     ${u ? `<img class="foto-big" src="${esc(u)}" alt="Foto de ${esc(p.nombre)}">` : `<div class="foto-big ph"><span>Sin foto</span></div>`}
     <div class="row between wrap" style="gap:8px"><span class="muted">${esc(p.tipo)} · #${p.codigo}</span><span class="tag ${remo(p) === "remodelado" ? "ok" : remo(p) === "archivado" ? "loss" : ""}">${REMO[remo(p)]}</span></div>
@@ -814,7 +876,7 @@ function verProd(codigo) {
       <div class="t" style="color:${p.mayor - c < 0 ? "var(--loss)" : "var(--pink-press)"}"><span>Ganancia por mayor</span><span>${$(p.mayor - c)}</span></div>
       <div style="color:${p.menor - c < 0 ? "var(--loss)" : "inherit"}"><span>Ganancia al detal</span><span>${$(p.menor - c)}</span></div>
     </div>
-    ${insumosDe(p).length ? `<section class="card" style="display:flex;flex-direction:column;gap:8px"><h3>Materia prima</h3>${insumosDe(p).map(m => { const u = safeUrl(m.link); return `<div class="row between" style="gap:8px"><div class="grow"><b>${esc(m.nombre)}</b><div class="muted small">${esc(m.lugar)} · ${$(m.cantidad ? m.precio / m.cantidad : 0)} c/u</div></div>${u ? `<a class="buy" href="${esc(u)}" target="_blank" rel="noopener">Comprar</a>` : ""}</div>`; }).join("")}</section>` : ""}
+    ${insumosDe(p).length ? `<section class="card" style="display:flex;flex-direction:column;gap:8px"><h3>Materia prima</h3>${insumosDe(p).map(m => { const u = safeUrl(m.link), usa = dec((insLinks(p).find(l => l.id === m.id) || {}).usa); return `<div class="row between" style="gap:8px"><div class="grow"><b>${esc(m.nombre)}</b><div class="muted small">Usa ${decTxt(usa)} ${usa === 1 ? infoCat(m).u : infoCat(m).pl} · ${$u(unitario(m) * usa)}</div></div>${u ? `<a class="buy" href="${esc(u)}" target="_blank" rel="noopener">Comprar</a>` : ""}</div>`; }).join("")}</section>` : ""}
     ${costos.length ? `<section class="card" style="display:flex;flex-direction:column;gap:6px"><h3>De qué está hecho el costo</h3>${costos.map(([k, v]) => `<div class="row between"><span>${k}</span><span class="num">${$(v)}</span></div>`).join("")}</section>` : ""}
     <section class="card" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center">
       <div><b style="font-size:20px">${vendidas}</b><div class="muted small">vendidas</div></div>
@@ -844,7 +906,7 @@ function editProd(codigo) {
     <div class="totals" id="ppTot"></div>
     <h3>Materia prima que usa</h3>
     <div id="ppIns" style="display:flex;flex-direction:column;gap:10px"></div>
-    <button class="btn block" type="button" data-action="save-prod">Guardar producto</button>`, () => { editing = p; insForm = null; drawProdTot(); drawProdFoto(); drawProdIns(); });
+    <button class="btn block" type="button" data-action="save-prod">Guardar producto</button>`, () => { editing = p; insForm = null; drawProdFoto(); drawProdIns(); });
 }
 function drawProdFoto() {
   const el = $id("ppFoto"); if (!el || !editing) return;
@@ -864,16 +926,23 @@ function drawProdTot() {
 let editingMat = null;
 function editMat(id) {
   const nuevo = id == null;
-  const m = nuevo ? { id: Math.max(0, ...S.materia.map(x => x.id)) + 1, nombre: "", lugar: "SHEIN", cantidad: 0, precio: 0, link: "" } : { ...S.materia.find(x => x.id === id) };
-  const url = safeUrl(m.link);
-  openSheet(nuevo ? "Nueva materia prima" : "Editar materia prima", `
+  const m = nuevo ? { id: Math.max(0, ...S.materia.map(x => x.id)) + 1, nombre: "", categoria: "", lugar: "", cantidad: 0, cantidadIngresada: "", presentacion: "unidades", precio: 0, link: "" } : { ...S.materia.find(x => x.id === id) };
+  if (!nuevo && m.cantidadIngresada == null) { m.cantidadIngresada = m.cantidad; m.presentacion = "unidades"; }
+  openSheet(nuevo ? "Nueva materia prima" : "Editar materia prima", `<div id="matForm" style="display:flex;flex-direction:column;gap:14px"></div>`, () => { editingMat = m; drawMatForm(); });
+}
+function drawMatForm(focusId) {
+  const m = editingMat, box = $id("matForm"); if (!box || !m) return;
+  const url = safeUrl(m.link), usan = S.productos.filter(p => insLinks(p).some(l => l.id === m.id));
+  box.innerHTML = `
+    <div class="field"><span class="lbl">Categoría</span><div class="chips">${CATS.map(c => `<button class="chip" type="button" data-action="mm-cat" data-v="${c}" aria-pressed="${m.categoria === c}">${c}</button>`).join("")}</div></div>
     <div class="field"><label for="mm_nombre">Nombre</label><input id="mm_nombre" data-mm="nombre" value="${esc(m.nombre)}"></div>
-    <div class="field"><label for="mm_lugar">Dónde se compra</label><input id="mm_lugar" data-mm="lugar" value="${esc(m.lugar)}"></div>
-    <div class="grid2"><div class="field"><label for="mm_cantidad">Cantidad</label><input id="mm_cantidad" inputmode="numeric" data-mm="cantidad" value="${m.cantidad || ""}"></div>
-    <div class="field"><label for="mm_precio">Precio total</label><input id="mm_precio" inputmode="numeric" data-mm="precio" value="${miles(m.precio)}" class="money-in"></div></div>
     <div class="field"><label for="mm_link">Link de compra</label><input id="mm_link" type="url" data-mm="link" value="${esc(m.link)}" placeholder="https://"></div>
+    <div class="field"><label for="mm_lugar">Dónde se compra</label><input id="mm_lugar" data-mm="lugar" value="${esc(m.lugar)}"></div>
+    ${camposCompra(m, "mm")}
     ${url ? `<a class="buy" style="align-self:flex-start" href="${esc(url)}" target="_blank" rel="noopener">Abrir link de compra</a>` : ""}
-    <button class="btn block" type="button" data-action="save-mat">Guardar</button>`, () => { editingMat = m; });
+    ${usan.length ? `<p class="muted small" style="margin:0">Lo usan ${usan.length} producto${usan.length > 1 ? "s" : ""}: ${usan.slice(0, 6).map(p => esc(p.nombre)).join(", ")}${usan.length > 6 ? "…" : ""}. Si cambias el precio, su costo se actualiza solo.</p>` : ""}
+    <button class="btn block" type="button" data-action="save-mat">Guardar</button>`;
+  if (focusId) { const el = $id(focusId); if (el) el.focus(); }
 }
 
 /* Contenido */
@@ -940,8 +1009,8 @@ async function descargarExcel() {
   add("Invertido", S.inversiones.slice().sort((a, b) => a.fecha.localeCompare(b.fecha)).map(i => ({ "Fecha": i.fecha, "Qué compré": i.descripcion, "Categoría": i.categoria, "Dónde": i.lugar, "Valor": i.valor, "Detalle": i.detalle })));
   add("Ventas", rows(S.pedidos.filter(p => p.estado === "entregado")));
   add("Inventario", activos().slice().sort((a, b) => a.tipo.localeCompare(b.tipo) || a.nombre.localeCompare(b.nombre)).map(p => ({ "Código": p.codigo, "Nombre": p.nombre, "Tipo": p.tipo, "Stock": p.stock })));
-  add("Costos", S.productos.map(p => { const c = costoProd(p); return { "Código": p.codigo, "Nombre": p.nombre, "Tipo": p.tipo, "Remodelación": REMO[remo(p)], "Hilo": p.hilo, "Dije": p.dije, "Mostacillas": p.mostacillas, "Compra": p.compra, "Mano de obra": p.manoObra, "Empaque": p.empaque, "Costo total": c, "Precio por mayor": p.mayor, "Ganancia por mayor": p.mayor - c, "Precio detal": p.menor, "Ganancia detal": p.menor - c }; }));
-  add("Materia prima", S.materia.map(m => ({ "Nombre": m.nombre, "Lugar": m.lugar, "Cantidad": m.cantidad, "Precio": m.precio, "Precio por unidad": m.cantidad ? Math.round(m.precio / m.cantidad * 100) / 100 : 0, "Link": m.link })));
+  add("Costos", S.productos.map(p => { const c = costoProd(p); return { "Código": p.codigo, "Nombre": p.nombre, "Tipo": p.tipo, "Remodelación": REMO[remo(p)], "Hilo": costosDe(p).hilo, "Dije": costosDe(p).dije, "Mostacillas": costosDe(p).mostacillas, "Compra": costosDe(p).compra, "Mano de obra": p.manoObra, "Empaque": p.empaque, "Costo total": c, "Precio por mayor": p.mayor, "Ganancia por mayor": p.mayor - c, "Precio detal": p.menor, "Ganancia detal": p.menor - c }; }));
+  add("Materia prima", S.materia.map(m => ({ "Categoría": catDe(m) || "Sin categoría", "Nombre": m.nombre, "Lugar": m.lugar, "Cantidad": dec(m.cantidad), "Unidad": infoCat(m).pl, "Precio": m.precio, "Precio por unidad": Math.round(unitario(m) * 10) / 10, "Link": m.link })));
   add("Parrilla", S.contenido.slice().sort((a, b) => (a.fechaPublicacion || "9").localeCompare(b.fechaPublicacion || "9")).map(c => ({ "Fecha grabación": c.fechaGrabacion, "Fecha publicación": c.fechaPublicacion, "Hora": c.hora, "Serie": serie(c.serie).nombre, "Capítulo": c.capitulo, "Contenido": c.titulo, "Hook": c.hook, "Guion": c.guion, "Caption": c.caption, "Hashtags": c.hashtags, "Audio": c.audio, "Plataforma": c.plataforma, "Tipo": c.tipo, "Estado": C_EST_LABEL[c.estado], "Inspiración": c.inspiracion, "Link": c.link })));
   const data = XLSX.write(wb, { type: "array", bookType: "xlsx" });
   entregarArchivo(new Blob([data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "Blu Accesories " + today() + ".xlsx");
@@ -1108,23 +1177,29 @@ document.addEventListener("click", e => {
     case "video-prod": { const p = prodC(); const caps = S.contenido.filter(c => c.serie === "rebranding").map(c => +c.capitulo || 0);
       editContent(null, { serie: "rebranding", titulo: "Acompáñame a pasar de esto a esto: " + p.nombre, productoCodigo: p.codigo, capitulo: String(Math.max(0, ...caps) + 1) }); break; }
     case "edit-prod": editProd(+t.dataset.c); break;
-    case "ins-nuevo": insForm = { link: "", nombre: "", lugar: "", cantidad: 1, precio: 0 }; drawProdIns(); { const el = $id("in_link"); if (el) el.focus(); } break;
+    case "ins-nuevo": insForm = { categoria: "", link: "", nombre: "", lugar: "", cantidadIngresada: "", presentacion: "unidades", precio: 0, cuentasPorGramo: "" }; drawProdIns(); break;
+    case "inf-pres": insForm.presentacion = v; drawProdIns(); break;
+    case "mm-pres": editingMat.presentacion = v; drawMatForm(); break;
     case "ins-cancelar": insForm = null; drawProdIns(); break;
-    case "ins-quitar": editing.insumos = (editing.insumos || []).filter(id => id !== +t.dataset.id); drawProdIns(); break;
+    case "ins-quitar": editing.insumos = insLinks(editing).filter(l => l.id !== +t.dataset.id); drawProdIns(); break;
     case "ins-crear": { const f = insForm; if (!f.nombre.trim()) { toast("Ponle nombre al insumo"); return; }
-      const m = { id: Math.max(0, ...S.materia.map(x => x.id)) + 1, nombre: f.nombre.trim(), lugar: (f.lugar || lugarDeLink(f.link) || "").trim(), cantidad: num(f.cantidad) || 1, precio: num(f.precio), link: f.link.trim() };
-      S.materia.push(m); guardar("materia", m); editing.insumos = [...(editing.insumos || []), m.id]; insForm = null; drawProdIns(); toast(m.nombre + " quedó en Materia prima"); break; }
+      if (!baseCantidad(f) || !num(f.precio)) { toast("Escribe la cantidad y el precio que pagaste"); return; }
+      const m = { id: Math.max(0, ...S.materia.map(x => x.id)) + 1, nombre: f.nombre.trim(), categoria: f.categoria, lugar: (f.lugar || lugarDeLink(f.link) || "").trim(), cantidad: baseCantidad(f), cantidadIngresada: dec(f.cantidadIngresada), presentacion: f.presentacion, precio: num(f.precio), link: f.link.trim(), cuentasPorGramo: num(f.cuentasPorGramo) || undefined };
+      S.materia.push(m); guardar("materia", m); editing.insumos = [...insLinks(editing), { id: m.id, usa: 1 }]; insForm = null; drawProdIns(); toast(m.nombre + " quedó en Materia prima"); break; }
     case "ver-prod": verProd(+t.dataset.c); break;
     case "stock-det": { const p = prodC(); p.stock = Math.max(0, p.stock + (+t.dataset.d)); guardar("productos", p); render(); verProd(p.codigo); break; }
     case "new-prod": editProd(null); break;
     case "quitar-foto": { const p = editing, vieja = p.foto; p.foto = ""; const real = S.productos.find(x => x.codigo === p.codigo);
       if (real) { real.foto = ""; guardar("productos", real); render(); } if (vieja) sb.storage.from("fotos").remove([vieja]).catch(() => {}); drawProdFoto(); break; }
-    case "save-prod": { const p = editing; ["hilo", "dije", "mostacillas", "compra", "manoObra", "empaque", "mayor", "menor"].forEach(k => p[k] = n0(p[k])); p.stock = parseInt(p.stock, 10) || 0; if (!p.nombre.trim()) { toast("Ponle nombre al producto"); return; }
+    case "save-prod": { const p = editing; ["hilo", "dije", "mostacillas", "compra", "manoObra", "empaque", "mayor", "menor"].forEach(k => p[k] = n0(p[k]));
+      p.insumos = insLinks(p).map(l => ({ id: l.id, usa: dec(l.usa) || 1 })); if (usaInsumos(p)) Object.assign(p, materialesDe(p)); p.stock = parseInt(p.stock, 10) || 0; if (!p.nombre.trim()) { toast("Ponle nombre al producto"); return; }
       const i = S.productos.findIndex(x => x.codigo === p.codigo); if (i >= 0) S.productos[i] = p; else S.productos.push(p);
       guardar("productos", p); closeSheet(); render(); toast("Producto guardado"); break; }
     case "edit-mat": editMat(+t.dataset.id); break;
     case "new-mat": editMat(null); break;
+    case "mm-cat": editingMat.categoria = editingMat.categoria === v ? "" : v; drawMatForm(); break;
     case "save-mat": { const m = editingMat; if (!m.nombre.trim()) { toast("Ponle nombre"); return; }
+      m.cantidadIngresada = dec(m.cantidadIngresada); m.cantidad = baseCantidad(m) || m.cantidad; m.precio = num(m.precio); if (m.cuentasPorGramo) m.cuentasPorGramo = num(m.cuentasPorGramo);
       const i = S.materia.findIndex(x => x.id === m.id); if (i >= 0) S.materia[i] = m; else S.materia.push(m); guardar("materia", m); closeSheet(); render(); toast("Guardado"); break; }
     case "new-content": editContent(null); break;
     case "edit-content": editContent(t.dataset.id); break;
@@ -1163,9 +1238,15 @@ document.addEventListener("input", e => {
     const antes = editing.tipo; if (!n0(editing.manoObra) || n0(editing.manoObra) === MO_CAT[antes]) { editing.manoObra = MO_CAT[t.value] || 0; const mo = $id("pp_manoObra"); if (mo) mo.value = miles(editing.manoObra); }
   }
   if (t.dataset.pp && editing) { const k = t.dataset.pp; editing[k] = (k === "nombre" || k === "tipo") ? t.value : (k === "stock" ? (parseInt(t.value, 10) || 0) : num(t.value)); drawProdTot(); return; }
-  if (t.dataset.mm && editingMat) { const k = t.dataset.mm; editingMat[k] = (k === "cantidad" || k === "precio") ? num(t.value) : t.value; return; }
+  if (t.dataset.mm && editingMat) { const k = t.dataset.mm; editingMat[k] = t.value;
+    if (k === "link") { const l = lugarDeLink(t.value), el = $id("mm_lugar"); if (l && el && !el.value) { editingMat.lugar = l; el.value = l; } }
+    refrescarPU(editingMat, "mm"); return; }
+  if (t.dataset.usa && editing) { const id = +t.dataset.usa, l = insLinks(editing).map(x => x.id === id ? { ...x, usa: dec(t.value) } : x); editing.insumos = l;
+    const m = S.materia.find(x => x.id === id), s = $id("sub_" + id), un = $id("uni_" + id); if (m && s) s.textContent = $u(unitario(m) * dec(t.value)); if (m && un) un.textContent = unidadTxt(m, dec(t.value)); bloquearCostos(); return; }
   if (t.dataset.inf && insForm) { const k = t.dataset.inf; insForm[k] = t.value;
-    if (k === "link") { const l = lugarDeLink(t.value), el = $id("in_lugar"); if (l && el && !el.value) { insForm.lugar = l; el.value = l; } } return; }
+    if (k === "link") { const l = lugarDeLink(t.value), el = $id("inf_lugar"); if (l && el && !el.value) { insForm.lugar = l; el.value = l; } }
+    if (k === "categoria") { drawProdIns(); return; }
+    refrescarPU(insForm, "inf"); return; }
   if (t.dataset.remate && remateDraft) { remateDraft.precio = t.value; return; }
   if (t.dataset.rc && recDraft) { recDraft[t.dataset.rc] = t.value; return; }
   if (t.dataset.iv && editingInv) { editingInv[t.dataset.iv] = t.dataset.iv === "valor" ? num(t.value) : t.value; return; }
@@ -1175,7 +1256,7 @@ document.addEventListener("input", e => {
 document.addEventListener("change", e => {
   const t = e.target;
   if (t.dataset.change === "mes") { ui.ventasMes = t.value; render(); }
-  if (t.dataset.ins === "sel" && editing && t.value) { editing.insumos = [...(editing.insumos || []), +t.value]; drawProdIns(); return; }
+  if (t.dataset.ins === "sel" && editing && t.value) { editing.insumos = [...insLinks(editing), { id: +t.value, usa: 1 }]; drawProdIns(); return; }
   if (t.dataset.change === "invmes") { ui.invMes = t.value; render(); }
   if (t.dataset.iv && editingInv) editingInv[t.dataset.iv] = t.value;
   if (t.dataset.pp === "tipo" && editing && editing.tipo !== t.value) {
