@@ -333,3 +333,5 @@ nav.tabs svg{width:22px;height:22px}
 .es-collar{grid-template-columns:minmax(0,1fr)!important}
 .piezas{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px}
 .piezas .field:last-child{grid-column:1/-1}
+.pieza .usa-in{width:58px;flex:none}
+.piezas{grid-template-columns:minmax(0,1fr)!important}

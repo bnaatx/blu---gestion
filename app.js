@@ -150,13 +150,15 @@ const baseLbl = p => /manilla/i.test(p.tipo || "") ? "Hilo" : /anillo/i.test(p.t
 const esHecho = p => !!p.hecho || insLinks(p).some(l => { const m = S.materia.find(x => x.id === l.id); return m && catDe(m) === "Reventa"; });
 /* Collares, cadenitas y pulseras artesanales: cadena + dije + porta dije, escogidos de la materia prima */
 const esCollar = p => /cadenit|collar|pulsera/i.test(p.tipo || "") && !esHecho(p);
+const usaBase = p => /trio/i.test(p.tipo || "") ? 3 : /pareja/i.test(p.tipo || "") ? 2 : 1;
 const PIEZAS = [["Cadena", "Cadena"], ["Dije", "Dije"], ["Porta dije", "Porta dije (opcional)"]];
 function drawPiezas() {
-  const box = $id("ppPiezas"); if (!box || !editing) return; const p = editing;
+  const box = $id("ppPiezas"); if (!box || !editing || window._noPz) return; const p = editing;
   if (!esCollar(p)) { box.innerHTML = ""; return; }
   const links = insLinks(p), manual = !usaInsumos(p) && (n0(p.hilo) || n0(p.dije) || n0(p.compra));
   box.innerHTML = `<div class="piezas">${PIEZAS.map(([cat, lbl]) => { const ops = S.materia.filter(m => catDe(m) === cat).sort((a, b) => a.nombre.localeCompare(b.nombre, "es")); const sel = links.map(l => S.materia.find(m => m.id === l.id)).find(m => m && catDe(m) === cat);
-    return `<div class="field"><label for="pz_${cat.replace(/ /g, "")}">${lbl}</label><select id="pz_${cat.replace(/ /g, "")}" data-pieza="${cat}"><option value="">${cat === "Porta dije" ? "No lleva" : "Escoge…"}</option>${ops.map(m => `<option value="${m.id}" ${sel && sel.id === m.id ? "selected" : ""}>${esc(m.nombre)} · ${$u(unitario(m))}</option>`).join("")}</select>${!ops.length ? `<span class="muted small">No tienes insumos de ${cat.toLowerCase()} en Materia.</span>` : ""}</div>`; }).join("")}</div>
+    const ln = sel && links.find(l => l.id === sel.id), usa = ln ? dec(ln.usa) : 0;
+    return `<div class="field pieza"><label for="pz_${cat.replace(/ /g, "")}">${lbl}</label><div class="row" style="gap:6px"><select class="grow" id="pz_${cat.replace(/ /g, "")}" data-pieza="${cat}"><option value="">${cat === "Porta dije" ? "No lleva" : "Escoge…"}</option>${ops.map(m => `<option value="${m.id}" ${sel && sel.id === m.id ? "selected" : ""}>${esc(m.nombre)} · ${$u(unitario(m))}</option>`).join("")}</select>${sel ? `<span class="muted small">×</span><input class="usa-in" inputmode="decimal" aria-label="Cuántas usa de ${esc(sel.nombre)}" data-pzusa="${sel.id}" value="${esc(decTxt(usa))}">` : ""}</div>${sel ? `<span class="muted small">${unidadTxt(sel, usa)} · <b class="num" id="pzsub_${sel.id}">${$u(unitario(sel) * usa)}</b></span>` : ""}${!ops.length ? `<span class="muted small">No tienes insumos de ${cat.toLowerCase()} en Materia.</span>` : ""}</div>`; }).join("")}</div>
     ${manual ? `<p class="muted small" style="margin:0">Mientras no escojas, se usan los valores que tenía: ${n0(p.hilo) ? "cadena " + $(p.hilo) : ""}${n0(p.hilo) && n0(p.dije) ? ", " : ""}${n0(p.dije) ? "dije " + $(p.dije) : ""}${n0(p.compra) ? (n0(p.hilo) || n0(p.dije) ? ", " : "") + "otros " + $(p.compra) : ""}.</p>` : ""}`;
 }
 const manoDe = p => esHecho(p) ? 0 : n0(p.manoObra);
@@ -562,7 +564,7 @@ function vMateria() {
   if (ui.matCat != null && !todosG.some(([c]) => c === ui.matCat)) ui.matCat = null;
   const grupos = ui.matCat == null ? todosG : todosG.filter(([c]) => c === ui.matCat);
   const chips = `<div class="scroller"><button class="chip" type="button" data-action="mat-cat" data-v="*" aria-pressed="${ui.matCat == null}">Todos</button>${todosG.map(([c, l]) => `<button class="chip" type="button" data-action="mat-cat" data-v="${esc(c)}" aria-pressed="${ui.matCat === c}">${c || "Sin categoría"} (${l.length})</button>`).join("")}</div>`;
-  const fila = m => { const url = safeUrl(m.link), ic = infoCat(m), cant = dec(m.cantidadIngresada) || dec(m.cantidad), pres = m.presentacion === "docenas" ? (cant === 1 ? "docena" : "docenas") : (cant === 1 ? ic.u : ic.pl), s = buscaEn(m.nombre + " " + provNombre(m) + " " + catDe(m));
+  const fila = m => { const url = safeUrl(m.link), ic = infoCat(m), cant = dec(m.cantidadIngresada) || dec(m.cantidad), pres = m.presentacion === "docenas" ? (cant === 1 ? "docena" : "docenas") : m.presentacion === "tiras" ? (cant === 1 ? "tira" : "tiras") + " de " + decTxt(dec(m.porTira)) : (cant === 1 ? ic.u : ic.pl), s = buscaEn(m.nombre + " " + provNombre(m) + " " + catDe(m));
     return `<div class="prow tappable" data-action="edit-mat" data-id="${m.id}" role="button" tabindex="0" data-s="${esc(s)}"${q && !s.includes(q) ? " hidden" : ""}>
     ${insThumb(m)}<div class="grow"><div class="name">${esc(m.nombre)}</div><div class="muted small">${logo(provDe(m) || { nombre: provNombre(m) }, "xs")} ${esc(provNombre(m))} · ${decTxt(cant)} ${pres} por ${$(m.precio)} · <b class="num">${$u(unitario(m))}</b> ${ic.c}</div></div>
     ${url ? `<a class="buy" href="${esc(url)}" target="_blank" rel="noopener">Comprar</a>` : ""}</div>`; };
@@ -945,16 +947,17 @@ function lugarDeLink(u) {
 let insForm = null;
 const opcionesCat = sel => `<option value="">Sin categoría</option>` + CATS.map(c => `<option ${c === sel ? "selected" : ""}>${c}</option>`).join("");
 function camposCompra(f, pre) {
-  const ic = CAT_INS[f.categoria] || CAT_INS.Otro, base = (ic.doc && f.presentacion === "docenas" ? 12 : 1) * dec(f.cantidadIngresada);
+  const ic = CAT_INS[f.categoria] || CAT_INS.Otro, base = baseCantidad(f), tiras = ic.doc && f.presentacion === "tiras";
   const pu = base ? num(f.precio) / base : 0;
-  return `<div class="grid2"><div class="field"><label for="${pre}_cant">Cantidad comprada</label><input id="${pre}_cant" inputmode="decimal" data-${pre}="cantidadIngresada" value="${esc(decTxt(dec(f.cantidadIngresada)))}" placeholder="Ej: 50"></div>
+  return `<div class="grid2"><div class="field"><label for="${pre}_cant">${tiras ? "Tiras o paquetes comprados" : "Cantidad comprada"}</label><input id="${pre}_cant" inputmode="decimal" data-${pre}="cantidadIngresada" value="${esc(decTxt(dec(f.cantidadIngresada)))}" placeholder="Ej: 50"></div>
     <div class="field"><label for="${pre}_precio">Precio total</label><input id="${pre}_precio" inputmode="numeric" class="money-in" data-${pre}="precio" value="${miles(f.precio)}" placeholder="0"></div></div>
-    ${ic.doc ? `<div class="seg" role="group" aria-label="Viene por"><button type="button" data-action="${pre}-pres" data-v="unidades" aria-pressed="${f.presentacion !== "docenas"}">Unidades</button><button type="button" data-action="${pre}-pres" data-v="docenas" aria-pressed="${f.presentacion === "docenas"}">Docenas</button></div>`
+    ${ic.doc ? `<div class="seg" role="group" aria-label="Viene por"><button type="button" data-action="${pre}-pres" data-v="unidades" aria-pressed="${f.presentacion !== "docenas"}">Unidades</button><button type="button" data-action="${pre}-pres" data-v="docenas" aria-pressed="${f.presentacion === "docenas"}">Docenas</button><button type="button" data-action="${pre}-pres" data-v="tiras" aria-pressed="${tiras}">Tiras</button></div>
+      ${tiras ? `<div class="field"><label for="${pre}_ptira">¿Cuántas trae cada tira?</label><input id="${pre}_ptira" inputmode="numeric" data-${pre}="porTira" value="${esc(f.porTira || "")}" placeholder="Ej: 40 perlas"></div><p class="muted small" style="margin:-6px 0 0">En el producto pones cuántas usa (ej. 12 perlas) y la app saca el precio.</p>` : ""}`
       : `<p class="muted small" style="margin:0">Escribe la cantidad en ${ic.pl}.</p>`}
     ${f.categoria === "Mostacilla" ? `<div class="field"><label for="${pre}_cpg">Cuentas por gramo (opcional)</label><input id="${pre}_cpg" inputmode="numeric" data-${pre}="cuentasPorGramo" value="${f.cuentasPorGramo || ""}" placeholder="Cuenta las que caben en 1 gramo"></div>` : ""}
     <div class="totals"><div class="t"><span>Te sale a</span><span id="${pre}_pu">${pu ? $u(pu) + " " + ic.c : "—"}</span></div></div>`;
 }
-const baseCantidad = f => ((CAT_INS[f.categoria] || CAT_INS.Otro).doc && f.presentacion === "docenas" ? 12 : 1) * dec(f.cantidadIngresada);
+const baseCantidad = f => { const doc = (CAT_INS[f.categoria] || CAT_INS.Otro).doc; return (doc && f.presentacion === "docenas" ? 12 : doc && f.presentacion === "tiras" ? dec(f.porTira) : 1) * dec(f.cantidadIngresada); };
 function refrescarPU(f, pre) { const el = $id(pre + "_pu"); if (!el) return; const ic = CAT_INS[f.categoria] || CAT_INS.Otro, b = baseCantidad(f); el.textContent = b && num(f.precio) ? $u(num(f.precio) / b) + " " + ic.c : "—"; }
 function drawProdIns() {
   const box = $id("ppIns"); if (!box || !editing) return;
@@ -1363,7 +1366,7 @@ document.addEventListener("click", e => {
     case "ins-quitar": editing.insumos = insLinks(editing).filter(l => l.id !== +t.dataset.id); drawProdIns(); break;
     case "ins-crear": { const f = insForm; if (!f.nombre.trim()) { toast("Ponle nombre al insumo"); return; }
       if (!baseCantidad(f) || !num(f.precio)) { toast("Escribe la cantidad y el precio que pagaste"); return; }
-      const m = { id: Math.max(0, ...S.materia.map(x => x.id)) + 1, nombre: f.nombre.trim(), categoria: f.categoria, proveedorId: +f.proveedorId || undefined, lugar: (+f.proveedorId ? (S.proveedores.find(v => v.id === +f.proveedorId) || {}).nombre : (f.lugar || lugarDeLink(f.link) || "")).trim(), cantidad: baseCantidad(f), cantidadIngresada: dec(f.cantidadIngresada), presentacion: f.presentacion, precio: num(f.precio), link: f.link.trim(), cuentasPorGramo: num(f.cuentasPorGramo) || undefined };
+      const m = { id: Math.max(0, ...S.materia.map(x => x.id)) + 1, nombre: f.nombre.trim(), categoria: f.categoria, proveedorId: +f.proveedorId || undefined, lugar: (+f.proveedorId ? (S.proveedores.find(v => v.id === +f.proveedorId) || {}).nombre : (f.lugar || lugarDeLink(f.link) || "")).trim(), cantidad: baseCantidad(f), cantidadIngresada: dec(f.cantidadIngresada), presentacion: f.presentacion, precio: num(f.precio), link: f.link.trim(), cuentasPorGramo: num(f.cuentasPorGramo) || undefined, porTira: f.presentacion === "tiras" ? dec(f.porTira) : undefined };
       S.materia.push(m); guardar("materia", m); editing.insumos = [...insLinks(editing), { id: m.id, usa: 1 }]; insForm = null; drawProdIns(); toast(m.nombre + " quedó en Materia prima"); break; }
     case "ver-prod": verProd(+t.dataset.c); break;
     case "stock-det": { const p = prodC(); p.stock = Math.max(0, p.stock + (+t.dataset.d)); guardar("productos", p); render(); verProd(p.codigo); break; }
@@ -1399,7 +1402,7 @@ document.addEventListener("click", e => {
     case "mm-quitar-foto": { const m = editingMat; m.foto = ""; m.fotoIntento = m.link; const b = $id("mmFoto"); if (b) b.innerHTML = fotoInsBox(m); break; }
     case "save-mat": { const m = editingMat; if (!m.nombre.trim()) { toast("Ponle nombre"); return; }
       if (+m.proveedorId) { m.proveedorId = +m.proveedorId; m.lugar = (S.proveedores.find(v => v.id === m.proveedorId) || {}).nombre || m.lugar; } else delete m.proveedorId;
-      m.cantidadIngresada = dec(m.cantidadIngresada); m.cantidad = baseCantidad(m) || m.cantidad; m.precio = num(m.precio); if (m.cuentasPorGramo) m.cuentasPorGramo = num(m.cuentasPorGramo);
+      m.cantidadIngresada = dec(m.cantidadIngresada); m.cantidad = baseCantidad(m) || m.cantidad; m.precio = num(m.precio); if (m.cuentasPorGramo) m.cuentasPorGramo = num(m.cuentasPorGramo); if (m.porTira) m.porTira = dec(m.porTira);
       const i = S.materia.findIndex(x => x.id === m.id); if (i >= 0) S.materia[i] = m; else S.materia.push(m); guardar("materia", m); closeSheet(); render(); toast("Guardado"); break; }
     case "new-content": editContent(null); break;
     case "edit-content": editContent(t.dataset.id); break;
@@ -1426,6 +1429,9 @@ document.addEventListener("keydown", e => {
 });
 document.addEventListener("input", e => {
   const t = e.target;
+  if (t.dataset.pzusa && editing) { const id = +t.dataset.pzusa, u = dec(t.value); editing.insumos = insLinks(editing).map(x => x.id === id ? { ...x, usa: u } : x);
+    const m = S.materia.find(x => x.id === id), ps = $id("pzsub_" + id), ui2 = $id("usa_" + id), s2 = $id("sub_" + id); if (m && ps) ps.textContent = $u(unitario(m) * u); if (ui2) ui2.value = decTxt(u); if (m && s2) s2.textContent = $u(unitario(m) * u);
+    window._noPz = true; bloquearCostos(); window._noPz = false; return; }
   if (t.classList && t.classList.contains("money-in")) { const n = num(t.value), f = miles(n); if (t.value !== f) { t.value = f; try { t.setSelectionRange(f.length, f.length); } catch (er) { } } }
   if (t.dataset.input) { ui[t.dataset.input] = t.value; filtrarFilas(t.value); return; }
   if (t.dataset.f && draft) { const k = t.dataset.f; draft[k] = (k === "envio" || k === "abono") ? num(t.value) : t.value;
@@ -1463,7 +1469,7 @@ document.addEventListener("change", e => {
   if (t.dataset.change === "mes") { ui.ventasMes = t.value; render(); }
   if (t.dataset.pieza && editing) { const cat = t.dataset.pieza;
     editing.insumos = insLinks(editing).filter(l => { const m = S.materia.find(x => x.id === l.id); return !m || catDe(m) !== cat; });
-    if (t.value) editing.insumos.push({ id: +t.value, usa: 1 }); drawProdIns(); return; }
+    if (t.value) editing.insumos.push({ id: +t.value, usa: usaBase(editing) }); drawProdIns(); return; }
   if (t.dataset.ins === "sel" && editing && t.value) { editing.insumos = [...insLinks(editing), { id: +t.value, usa: 1 }]; drawProdIns(); return; }
   if (t.dataset.change === "invmes") { ui.invMes = t.value; render(); }
   if (t.dataset.iv && editingInv) editingInv[t.dataset.iv] = t.value;
