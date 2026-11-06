@@ -335,3 +335,4 @@ nav.tabs svg{width:22px;height:22px}
 .piezas .field:last-child{grid-column:1/-1}
 .pieza .usa-in{width:58px;flex:none}
 .piezas{grid-template-columns:minmax(0,1fr)!important}
+.mat-chips{display:flex;flex-wrap:wrap;gap:8px}
