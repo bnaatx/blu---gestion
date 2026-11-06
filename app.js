@@ -109,12 +109,38 @@ function materialesDe(p) {
   const r = { hilo: 0, dije: 0, mostacillas: 0, compra: 0 };
   insLinks(p).forEach(({ id, usa }) => { const m = S.materia.find(x => x.id === id); if (!m) return;
     const v = unitario(m) * dec(usa), c = catDe(m);
-    if (c === "Hilo") r.hilo += v; else if (c === "Dije") r.dije += v; else if (c === "Mostacilla") r.mostacillas += v; else r.compra += v; });
+    if (c === "Hilo") r.hilo += v; else if (c === "Dije") r.dije += v; else if (c === "Mostacilla") r.mostacillas += v; else if (c !== "Empaque") r.compra += v; });
   Object.keys(r).forEach(k => r[k] = Math.round(r[k]));
   return r;
 }
 const costosDe = p => usaInsumos(p) ? materialesDe(p) : { hilo: n0(p.hilo), dije: n0(p.dije), mostacillas: n0(p.mostacillas), compra: n0(p.compra) };
-function costoProd(p) { const c = costosDe(p); return c.hilo + c.dije + c.mostacillas + c.compra + n0(p.manoObra) + n0(p.empaque); }
+/* Empaque fijo: lo mismo para todos los productos. Si el producto tiene su propio empaque enlazado (ej. caja de anillos), ese reemplaza la caja. */
+const KIT_DEF = [
+  { id: "caja", nombre: "Caja", precio: 1500, rinde: 1, caja: true },
+  { id: "vinipel", nombre: "Forro de la caja (papel vinipel)", precio: 20000, rinde: "" },
+  { id: "seda", nombre: "Papel seda", precio: "", rinde: 1 },
+  { id: "bolsa", nombre: "Bolsa transparente", precio: 65, rinde: 1 },
+  { id: "stlogo", nombre: "Sticker del logo (caja)", precio: 80, rinde: 1 },
+  { id: "stdatos", nombre: "Papel sticker (datos)", precio: 367, rinde: 1 },
+  { id: "tgracias", nombre: "Tarjeta “Gracias por tu compra” (opalina)", precio: 314, rinde: 1 },
+  { id: "tnombre", nombre: "Tarjeta con el nombre (opalina)", precio: 314, rinde: 1 },
+  { id: "ttips", nombre: "Tarjeta tips de cuidado (opalina)", precio: "", rinde: 1 },
+  { id: "imp", nombre: "Impresión de tarjetas", precio: 55, rinde: 1 },
+  { id: "papel", nombre: "Papel", precio: 20, rinde: 1 },
+  { id: "carton", nombre: "Cartón / cartulina", precio: 100, rinde: 1 }];
+const kit = () => { let k = S.ajustes.find(a => a.id === "empaque"); if (!k) { k = { id: "empaque", items: KIT_DEF.map(x => ({ ...x })) }; S.ajustes.push(k); } return k; };
+const kitFalta = it => it.precio === "" || it.precio == null || !dec(it.rinde);
+const kitCosto = it => kitFalta(it) ? 0 : n0(it.precio) / dec(it.rinde);
+function empaqueDe(p) {
+  const items = kit().items, propios = insLinks(p).map(l => ({ l, m: S.materia.find(x => x.id === l.id) })).filter(x => x.m && catDe(x.m) === "Empaque").map(({ l, m }) => ({ nombre: m.nombre, costo: unitario(m) * dec(l.usa), propio: true }));
+  const cambiaCaja = propios.length > 0;
+  const lineas = items.map(it => ({ nombre: it.nombre, costo: cambiaCaja && it.caja ? 0 : kitCosto(it), falta: kitFalta(it), quitada: cambiaCaja && it.caja })).concat(propios);
+  return { total: Math.round(lineas.reduce((a, x) => a + x.costo, 0)), lineas, cambiaCaja };
+}
+const empaqueBox = (p, editable) => { const e = empaqueDe(p); return `<details class="emp-fijo"${window._empA ? " open" : ""} ontoggle="window._empA=this.open"><summary><span>Empaque <span class="muted small">(fijo${e.cambiaCaja ? " + su empaque" : ""})</span></span><b class="num">${$(e.total)}</b></summary>
+  <div class="emp-list">${e.lineas.map(x => `<div class="row between${x.quitada ? " tachado" : ""}"><span>${esc(x.nombre)}${x.propio ? ' <span class="tag">de este producto</span>' : ""}${x.quitada ? ' <span class="muted small">(la reemplaza su empaque)</span>' : ""}${x.falta && !x.quitada ? ' <span class="tag loss">falta precio</span>' : ""}</span><span class="num">${$u(x.costo)}</span></div>`).join("")}</div>
+  <button class="btn sm ghost" type="button" data-action="ver-kit">Editar empaque fijo</button></details>`; };
+function costoProd(p) { const c = costosDe(p); return c.hilo + c.dije + c.mostacillas + c.compra + n0(p.manoObra) + empaqueDe(p).total; }
 const remo = p => p.remodelacion || "pendiente";
 const activos = () => S.productos.filter(p => remo(p) !== "archivado");
 
@@ -143,10 +169,10 @@ const sb = window.supabase.createClient(window.BLU_CONFIG.supabaseUrl, window.BL
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
 });
 let uid = null, email = "";
-let S = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [], proveedores: [] };
+let S = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [], proveedores: [], ajustes: [] };
 let estado = "cargando"; // cargando | listo | error
-const COLS = ["productos", "materia", "pedidos", "contenido", "inversiones", "proveedores"];
-const ID_OF = { productos: p => String(p.codigo), materia: m => String(m.id), pedidos: p => p.id, contenido: c => c.id, inversiones: i => i.id, proveedores: v => String(v.id) };
+const COLS = ["productos", "materia", "pedidos", "contenido", "inversiones", "proveedores", "ajustes"];
+const ID_OF = { productos: p => String(p.codigo), materia: m => String(m.id), pedidos: p => p.id, contenido: c => c.id, inversiones: i => i.id, proveedores: v => String(v.id), ajustes: a => a.id };
 
 async function cargar() {
   const rows = [];
@@ -156,7 +182,7 @@ async function cargar() {
     rows.push(...data);
     if (data.length < 1000) break;
   }
-  const n = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [], proveedores: [] };
+  const n = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [], proveedores: [], ajustes: [] };
   rows.forEach(r => { if (n[r.coleccion]) n[r.coleccion].push(r.data); });
   n.productos.sort((a, b) => a.codigo - b.codigo);
   n.materia.sort((a, b) => a.id - b.id);
@@ -501,7 +527,12 @@ function provPorLink(link) {
 }
 function vMateria() {
   const seg = ui.matSeg, q = buscaEn(ui.matQ);
-  const tabs = `<div class="seg" role="group" aria-label="Materia prima"><button type="button" data-action="mat-seg" data-v="insumos" aria-pressed="${seg === "insumos"}">Insumos</button><button type="button" data-action="mat-seg" data-v="proveedores" aria-pressed="${seg === "proveedores"}">Proveedores</button></div>`;
+  const tabs = `<div class="seg" role="group" aria-label="Materia prima"><button type="button" data-action="mat-seg" data-v="insumos" aria-pressed="${seg === "insumos"}">Insumos</button><button type="button" data-action="mat-seg" data-v="proveedores" aria-pressed="${seg === "proveedores"}">Proveedores</button><button type="button" data-action="mat-seg" data-v="empaque" aria-pressed="${seg === "empaque"}">Empaque fijo</button></div>`;
+  if (seg === "empaque") { const items = kit().items, tot = Math.round(items.reduce((a, it) => a + kitCosto(it), 0)), faltan = items.filter(kitFalta).length;
+    return `${tabs}<section class="card emp-hero"><span class="muted small">Empaque de cada pedido</span><b>${$(tot)}</b><span class="muted small">Se suma igual a todos los productos. Si un producto tiene su propio empaque enlazado (como la caja de anillos), ese reemplaza la caja.</span></section>
+    ${faltan ? `<div class="warn">${faltan === 1 ? "Falta el precio de 1 cosa" : "Faltan los precios de " + faltan + " cosas"}. Tócalas para completarlas.</div>` : ""}
+    <section class="card" style="padding-block:4px">${items.map(it => `<div class="prow tappable" data-action="kit-edit" data-id="${esc(it.id)}" role="button" tabindex="0"><div class="grow"><div class="name">${esc(it.nombre)}${it.caja ? ' <span class="tag">caja</span>' : ""}</div><div class="muted small">${kitFalta(it) ? `<span class="tag loss">${it.precio === "" || it.precio == null ? "Falta precio" : "Falta: ¿para cuántos alcanza?"}</span>` : dec(it.rinde) > 1 ? `${$(it.precio)} ÷ ${decTxt(dec(it.rinde))} empaques` : "Por empaque"}</div></div><b class="num">${$u(kitCosto(it))}</b></div>`).join("")}</section>
+    <button class="btn block line" type="button" data-action="kit-edit">+ Agregar al empaque</button>`; }
   if (seg === "proveedores") {
     const lista = S.proveedores.slice().sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
     return `${tabs}<div class="row"><input class="search grow" id="matQ" data-input="matQ" placeholder="Buscar proveedor" value="${esc(ui.matQ)}" aria-label="Buscar proveedor"><button class="btn" type="button" data-action="new-prov">+ Proveedor</button></div>
@@ -523,6 +554,21 @@ function vMateria() {
   ${grupos.length ? grupos.map(([c, l]) => `<h3 style="margin-top:4px">${c || "Sin categoría"} <span class="muted">(${l.length})</span></h3>
     ${c ? "" : `<p class="muted small" style="margin:0">Toca cada uno para asignarle su categoría.</p>`}
     <section class="card" style="padding-block:4px">${l.map(fila).join("")}</section>`).join("") : '<div class="empty">Todavía no tienes materia prima</div>'}`;
+}
+
+let editingKit = null;
+function editKit(id) {
+  const k = kit(), it = id ? { ...k.items.find(x => x.id === id) } : { id: "k" + Date.now(), nombre: "", precio: "", rinde: 1 };
+  editingKit = it;
+  openSheet(id ? "Empaque fijo" : "Agregar al empaque", `
+    <div class="field"><label for="kt_nombre">Qué es</label><input id="kt_nombre" data-kit="nombre" value="${esc(it.nombre)}" placeholder="Ej: Papel seda"></div>
+    <div class="grid2"><div class="field"><label for="kt_precio">Lo compraste a</label><input id="kt_precio" inputmode="numeric" class="money-in" data-kit="precio" value="${it.precio === "" || it.precio == null ? "" : miles(it.precio)}" placeholder="$"></div>
+    <div class="field"><label for="kt_rinde">Te alcanza para</label><input id="kt_rinde" inputmode="decimal" data-kit="rinde" value="${esc(decTxt(dec(it.rinde)))}" placeholder="Ej: 40"></div></div>
+    <p class="muted small" style="margin:-6px 0 0">Si el precio es por unidad, deja 1. Si compraste un paquete o un rollo, pon para cuántos empaques te alcanza.${it.nota ? " " + esc(it.nota) + "." : ""} Si no lo usas, pon 0 en el precio.</p>
+    <label class="row" style="gap:8px"><input type="checkbox" data-kit="caja" ${it.caja ? "checked" : ""}> <span>Es la caja (se reemplaza cuando el producto tiene su propio empaque)</span></label>
+    <div class="totals"><div class="t"><span>Te sale por empaque</span><span id="ktCosto">${$u(kitCosto(it))}</span></div></div>
+    <button class="btn block" type="button" data-action="kit-save">Guardar</button>
+    ${id ? `<button class="btn block ghost" type="button" data-action="kit-del">Quitar del empaque</button>` : ""}`);
 }
 let editingProv = null;
 function verProv(id) {
@@ -631,7 +677,7 @@ function openSheet(title, html, onMount) {
   document.body.style.overflow = "hidden";
   onMount && onMount(sheetRoot.querySelector(".sheet"));
 }
-function closeSheet() { editingProv = null; remateDraft = null; insForm = null; editPed = null; sheetRoot.innerHTML = ""; document.body.style.overflow = ""; draft = null; editing = null; editingMat = null; editingC = null; editingInv = null; }
+function closeSheet() { editingKit = null; editingProv = null; remateDraft = null; insForm = null; editPed = null; sheetRoot.innerHTML = ""; document.body.style.overflow = ""; draft = null; editing = null; editingMat = null; editingC = null; editingInv = null; }
 
 /* Nuevo pedido */
 let draft = null;
@@ -923,13 +969,14 @@ const unidadTxt = (m, usa) => { const ic = infoCat(m); return (usa === 1 ? ic.u 
 function bloquearCostos() {
   if (!editing) return; const auto = usaInsumos(editing), mat = auto ? materialesDe(editing) : null;
   ["hilo", "dije", "mostacillas", "compra"].forEach(k => { const el = $id("pp_" + k); if (!el) return; el.readOnly = auto; el.classList.toggle("auto", auto); if (auto) el.value = miles(mat[k]) || "0"; });
+  const eb = $id("ppEmp"); if (eb) eb.innerHTML = empaqueBox(editing);
   drawProdTot();
 }
 
 /* Remate: últimas unidades más baratas; al venderse la última, el producto se archiva solo */
 const ultimaVenta = p => S.pedidos.filter(x => x.estado !== "perdido" && x.lineas.some(l => l.codigo === p.codigo)).map(x => x.fecha).sort().pop() || "";
 function sugerenciaRemate(p) {
-  const cd = costosDe(p), directo = cd.hilo + cd.dije + cd.mostacillas + cd.compra + n0(p.empaque);
+  const cd = costosDe(p), directo = cd.hilo + cd.dije + cd.mostacillas + cd.compra + empaqueDe(p).total;
   const base = Math.round(n0(p.menor) * 0.6 / 1000) * 1000;
   return Math.max(base, Math.ceil(directo / 1000) * 1000, 5000);
 }
@@ -949,7 +996,7 @@ function vSugeridosRemate() {
 let remateDraft = null;
 function pedirPrecioRemate(p) {
   remateDraft = { codigo: p.codigo, precio: n0(p.precioRemate) || sugerenciaRemate(p) };
-  const cd = costosDe(p), directo = cd.hilo + cd.dije + cd.mostacillas + cd.compra + n0(p.empaque);
+  const cd = costosDe(p), directo = cd.hilo + cd.dije + cd.mostacillas + cd.compra + empaqueDe(p).total;
   openSheet("Precio de remate", `
     <div class="row" style="gap:10px">${thumb(p, "lg")}<div><b>${esc(p.nombre)}</b><div class="muted small">${esc(p.tipo)} · ${p.stock} en stock</div></div></div>
     <div class="totals"><div><span>Precio normal</span><span>${$(p.menor)}</span></div><div><span>Lo que pagaste en materiales y empaque</span><span>${$(directo)}</span></div></div>
@@ -966,7 +1013,7 @@ function verProd(codigo) {
   const vendidas = ventas.reduce((a, l) => a + n0(l.cantidad), 0), ingreso = ventas.reduce((a, l) => a + n0(l.cantidad) * n0(l.precio), 0);
   const ultima = ventas.map(l => l.fecha).sort().pop();
   const cd = costosDe(p);
-  const costos = [["Hilo", cd.hilo], ["Dije", cd.dije], ["Mostacillas", cd.mostacillas], [usaInsumos(p) ? "Pasadores, cadenas y otros" : "Compra", cd.compra], ["Mano de obra", p.manoObra], ["Empaque", p.empaque]].filter(([, v]) => n0(v));
+  const costos = [["Hilo", cd.hilo], ["Dije", cd.dije], ["Mostacillas", cd.mostacillas], [usaInsumos(p) ? "Pasadores, cadenas y otros" : "Compra", cd.compra], ["Mano de obra", p.manoObra]].filter(([, v]) => n0(v));
   openSheet(p.nombre, `
     ${u ? `<img class="foto-big" src="${esc(u)}" alt="Foto de ${esc(p.nombre)}">` : `<div class="foto-big ph"><span>Sin foto</span></div>`}
     <div class="row between wrap" style="gap:8px"><span class="muted">${esc(p.tipo)} · #${p.codigo}</span><span class="tag ${remo(p) === "remodelado" ? "ok" : remo(p) === "archivado" ? "loss" : ""}">${REMO[remo(p)]}</span></div>
@@ -982,7 +1029,7 @@ function verProd(codigo) {
       <div style="color:${p.menor - c < 0 ? "var(--loss)" : "inherit"}"><span>Ganancia al detal</span><span>${$(p.menor - c)}</span></div>
     </div>
     ${insumosDe(p).length ? `<section class="card" style="display:flex;flex-direction:column;gap:8px"><h3>Materia prima</h3>${insumosDe(p).map(m => { const u = safeUrl(m.link), usa = dec((insLinks(p).find(l => l.id === m.id) || {}).usa); return `<div class="row between" style="gap:8px"><div class="grow"><b>${esc(m.nombre)}</b><div class="muted small">Usa ${decTxt(usa)} ${usa === 1 ? infoCat(m).u : infoCat(m).pl} · ${$u(unitario(m) * usa)}</div></div>${u ? `<a class="buy" href="${esc(u)}" target="_blank" rel="noopener">Comprar</a>` : ""}</div>`; }).join("")}</section>` : ""}
-    ${costos.length ? `<section class="card" style="display:flex;flex-direction:column;gap:6px"><h3>De qué está hecho el costo</h3>${costos.map(([k, v]) => `<div class="row between"><span>${k}</span><span class="num">${$(v)}</span></div>`).join("")}</section>` : ""}
+    ${costos.length ? `<section class="card" style="display:flex;flex-direction:column;gap:6px"><h3>De qué está hecho el costo</h3>${costos.map(([k, v]) => `<div class="row between"><span>${k}</span><span class="num">${$(v)}</span></div>`).join("")}${empaqueBox(p)}</section>` : ""}
     <section class="card" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center">
       <div><b style="font-size:20px">${vendidas}</b><div class="muted small">vendidas</div></div>
       <div><b class="num">${$(ingreso)}</b><div class="muted small">en ventas</div></div>
@@ -1005,7 +1052,8 @@ function editProd(codigo) {
     <div class="field"><label for="pp_nombre">Nombre</label><input id="pp_nombre" data-pp="nombre" value="${esc(p.nombre)}"></div>
     <div class="grid2"><div class="field"><label for="pp_tipo">Tipo</label><select id="pp_tipo" data-pp="tipo">${TIPOS.map(t => `<option ${t === p.tipo ? "selected" : ""}>${t}</option>`).join("")}</select></div>${f("stock", "Stock")}</div>
     <h3>Costos</h3>
-    <div class="grid3">${f("hilo", "Hilo")}${f("dije", "Dije")}${f("mostacillas", "Mostacillas")}${f("compra", "Compra")}${f("manoObra", "Mano de obra")}${f("empaque", "Empaque")}</div>
+    <div class="grid3">${f("hilo", "Hilo")}${f("dije", "Dije")}${f("mostacillas", "Mostacillas")}${f("compra", "Compra")}${f("manoObra", "Mano de obra")}</div>
+    <div id="ppEmp"></div>
     <h3>Precios</h3>
     <div class="grid2">${f("mayor", "Por mayor")}${f("menor", "Detal")}</div>
     <div class="totals" id="ppTot"></div>
@@ -1116,7 +1164,7 @@ async function descargarExcel() {
   add("Invertido", S.inversiones.slice().sort((a, b) => a.fecha.localeCompare(b.fecha)).map(i => ({ "Fecha": i.fecha, "Qué compré": i.descripcion, "Categoría": i.categoria, "Dónde": i.lugar, "Valor": i.valor, "Detalle": i.detalle })));
   add("Ventas", rows(S.pedidos.filter(p => p.estado === "entregado")));
   add("Inventario", activos().slice().sort((a, b) => a.tipo.localeCompare(b.tipo) || a.nombre.localeCompare(b.nombre)).map(p => ({ "Código": p.codigo, "Nombre": p.nombre, "Tipo": p.tipo, "Stock": p.stock })));
-  add("Costos", S.productos.map(p => { const c = costoProd(p); return { "Código": p.codigo, "Nombre": p.nombre, "Tipo": p.tipo, "Remodelación": REMO[remo(p)], "Hilo": costosDe(p).hilo, "Dije": costosDe(p).dije, "Mostacillas": costosDe(p).mostacillas, "Compra": costosDe(p).compra, "Mano de obra": p.manoObra, "Empaque": p.empaque, "Costo total": c, "Precio por mayor": p.mayor, "Ganancia por mayor": p.mayor - c, "Precio detal": p.menor, "Ganancia detal": p.menor - c }; }));
+  add("Costos", S.productos.map(p => { const c = costoProd(p); return { "Código": p.codigo, "Nombre": p.nombre, "Tipo": p.tipo, "Remodelación": REMO[remo(p)], "Hilo": costosDe(p).hilo, "Dije": costosDe(p).dije, "Mostacillas": costosDe(p).mostacillas, "Compra": costosDe(p).compra, "Mano de obra": p.manoObra, "Empaque": empaqueDe(p).total, "Costo total": c, "Precio por mayor": p.mayor, "Ganancia por mayor": p.mayor - c, "Precio detal": p.menor, "Ganancia detal": p.menor - c }; }));
   add("Materia prima", S.materia.map(m => ({ "Categoría": catDe(m) || "Sin categoría", "Nombre": m.nombre, "Lugar": m.lugar, "Cantidad": dec(m.cantidad), "Unidad": infoCat(m).pl, "Precio": m.precio, "Precio por unidad": Math.round(unitario(m) * 10) / 10, "Link": m.link })));
   add("Parrilla", S.contenido.slice().sort((a, b) => (a.fechaPublicacion || "9").localeCompare(b.fechaPublicacion || "9")).map(c => ({ "Fecha grabación": c.fechaGrabacion, "Fecha publicación": c.fechaPublicacion, "Hora": c.hora, "Serie": serie(c.serie).nombre, "Capítulo": c.capitulo, "Contenido": c.titulo, "Hook": c.hook, "Guion": c.guion, "Caption": c.caption, "Hashtags": c.hashtags, "Audio": c.audio, "Plataforma": c.plataforma, "Tipo": c.tipo, "Estado": C_EST_LABEL[c.estado], "Inspiración": c.inspiracion, "Link": c.link })));
   const data = XLSX.write(wb, { type: "array", bookType: "xlsx" });
@@ -1310,6 +1358,12 @@ document.addEventListener("click", e => {
     case "ver-prov": verProv(+t.dataset.id); break;
     case "edit-prov": editProv(+t.dataset.id); break;
     case "quitar-logo": { const vieja = editingProv.logo; editingProv.logo = ""; if (vieja) sb.storage.from("fotos").remove([vieja]).catch(() => {}); const real = S.proveedores.find(x => x.id === editingProv.id); if (real) { real.logo = ""; guardar("proveedores", real); } drawProvLogo(); break; }
+    case "ver-kit": closeSheet(); ui.matSeg = "empaque"; go("materia"); break;
+    case "kit-edit": editKit(t.dataset.id); break;
+    case "kit-save": { const it = editingKit; if (!String(it.nombre).trim()) { toast("Ponle nombre"); return; } it.nombre = it.nombre.trim();
+      const k = kit(), i = k.items.findIndex(x => x.id === it.id); if (i >= 0) k.items[i] = it; else k.items.push(it);
+      guardar("ajustes", k); closeSheet(); render(); toast("Empaque actualizado en todos los productos"); break; }
+    case "kit-del": { const k = kit(); k.items = k.items.filter(x => x.id !== editingKit.id); guardar("ajustes", k); closeSheet(); render(); toast("Quitado del empaque"); break; }
     case "save-prov": { const v = editingProv; if (!v.nombre.trim()) { toast("Ponle nombre al proveedor"); return; } v.nombre = v.nombre.trim();
       const i = S.proveedores.findIndex(x => x.id === v.id); if (i >= 0) S.proveedores[i] = v; else S.proveedores.push(v);
       S.materia.filter(m => m.proveedorId === v.id && m.lugar !== v.nombre).forEach(m => { m.lugar = v.nombre; guardar("materia", m); });
@@ -1338,7 +1392,7 @@ document.addEventListener("click", e => {
     case "actualizar": buscarActualizacion(true); break;
     case "excel": descargarExcel(); break;
     case "respaldo": descargarRespaldo(); break;
-    case "logout": sb.auth.signOut().then(() => { S = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [], proveedores: [] }; uid = null; iniciar(null); }); break;
+    case "logout": sb.auth.signOut().then(() => { S = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [], proveedores: [], ajustes: [] }; uid = null; iniciar(null); }); break;
   }
 });
 document.addEventListener("keydown", e => {
@@ -1373,6 +1427,7 @@ document.addEventListener("input", e => {
     refrescarPU(insForm, "inf"); return; }
   if (t.dataset.remate && remateDraft) { remateDraft.precio = t.value; return; }
   if (t.dataset.pv && editingProv) { editingProv[t.dataset.pv] = t.value; return; }
+  if (t.dataset.kit && editingKit) { const k = t.dataset.kit; editingKit[k] = k === "caja" ? t.checked : k === "precio" ? (t.value.trim() === "" ? "" : num(t.value)) : k === "rinde" ? t.value : t.value; const c = $id("ktCosto"); if (c) c.textContent = $u(kitCosto(editingKit)); return; }
   if (t.dataset.rc && recDraft) { recDraft[t.dataset.rc] = t.value; return; }
   if (t.dataset.iv && editingInv) { editingInv[t.dataset.iv] = t.dataset.iv === "valor" ? num(t.value) : t.value; return; }
   if (t.dataset.abono) { const p = S.pedidos.find(x => x.id === t.dataset.abono); if (p) { p.abono = num(t.value); clearTimeout(p._t); p._t = setTimeout(() => { delete p._t; guardar("pedidos", p); render(); }, 600); } return; }
