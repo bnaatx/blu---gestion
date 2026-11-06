@@ -98,7 +98,9 @@ const CAT_INS = {
   "Otro": { u: "unidad", pl: "unidades", c: "c/u", doc: true },
 };
 const CATS = Object.keys(CAT_INS);
-const catDe = m => CAT_INS[m.categoria] ? m.categoria : "";
+const catDe = m => (m && m.categoria) || "";
+/* Categorías fijas + las que ella cree (salen de "Otro"), con "Otro" de última */
+const catsTodas = () => { const extra = [...new Set(S.materia.map(m => m.categoria).filter(c => c && !CAT_INS[c]))].sort((a, b) => a.localeCompare(b, "es")); return [...CATS.filter(c => c !== "Otro"), ...extra, "Otro"]; };
 const infoCat = m => CAT_INS[catDe(m)] || CAT_INS.Otro;
 /* números con decimales: "0,5" "1.5" "1.000" */
 const dec = v => { const s = String(v ?? "").trim().replace(/\s/g, "").replace(/\.(?=\d{3}(?:\D|$))/g, "").replace(",", "."); const n = parseFloat(s); return isFinite(n) && n > 0 ? n : 0; };
@@ -560,7 +562,7 @@ function vMateria() {
       return `<button type="button" class="prov-card" data-action="ver-prov" data-id="${v.id}" data-s="${esc(s)}"${q && !s.includes(q) ? " hidden" : ""}>${logo(v, "lg")}<b>${esc(v.nombre)}</b><span class="muted small">${esc(igHandle(v.instagram))}</span><span class="tag">${n} insumo${n === 1 ? "" : "s"}</span></button>`; }).join("")
       || `<div class="empty" style="grid-column:1/-1"><div class="iso"></div><b>Aún no tienes proveedores</b><span class="small">Toca “+ Proveedor” para agregar el primero.</span></div>`}</div>`;
   }
-  const todosG = [...CATS, ""].map(c => [c, S.materia.filter(m => catDe(m) === c).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))]).filter(([, l]) => l.length);
+  const todosG = [...catsTodas(), ""].map(c => [c, S.materia.filter(m => catDe(m) === c).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))]).filter(([, l]) => l.length);
   if (ui.matCat != null && !todosG.some(([c]) => c === ui.matCat)) ui.matCat = null;
   const grupos = ui.matCat == null ? todosG : todosG.filter(([c]) => c === ui.matCat);
   const chips = `<div class="chips mat-chips"><button class="chip" type="button" data-action="mat-cat" data-v="*" aria-pressed="${ui.matCat == null}">Todos</button>${todosG.map(([c, l]) => `<button class="chip" type="button" data-action="mat-cat" data-v="${esc(c)}" aria-pressed="${ui.matCat === c}">${c || "Sin categoría"} (${l.length})</button>`).join("")}</div>`;
@@ -945,7 +947,7 @@ function lugarDeLink(u) {
   return d ? d.split(".")[0].toUpperCase() : "";
 }
 let insForm = null;
-const opcionesCat = sel => `<option value="">Sin categoría</option>` + CATS.map(c => `<option ${c === sel ? "selected" : ""}>${c}</option>`).join("");
+const opcionesCat = sel => `<option value="">Sin categoría</option>` + catsTodas().map(c => `<option ${c === sel ? "selected" : ""}>${c}</option>`).join("");
 function camposCompra(f, pre) {
   const ic = CAT_INS[f.categoria] || CAT_INS.Otro, base = baseCantidad(f), tiras = ic.doc && f.presentacion === "tiras";
   const pu = base ? num(f.precio) / base : 0;
@@ -963,7 +965,7 @@ function drawProdIns() {
   const box = $id("ppIns"); if (!box || !editing) return;
   const links = insLinks(editing), usados = links.map(l => l.id);
   const libres = S.materia.filter(m => !usados.includes(m.id));
-  const grupos = ["", ...CATS].map(c => [c, libres.filter(m => catDe(m) === c).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))]).filter(([, l]) => l.length);
+  const grupos = ["", ...catsTodas()].map(c => [c, libres.filter(m => catDe(m) === c).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))]).filter(([, l]) => l.length);
   box.innerHTML = `${links.length ? `<div class="list">${links.map(l => { const m = S.materia.find(x => x.id === l.id); if (!m) return ""; const u = safeUrl(m.link), ic = infoCat(m), usa = dec(l.usa);
       return `<div class="ins-row">
         <div class="row between" style="gap:8px"><div class="grow"><b>${esc(m.nombre)}</b><div class="muted small">${catDe(m) || "Sin categoría"} · ${$u(unitario(m))} ${ic.c}</div></div>
@@ -1115,7 +1117,8 @@ function drawMatForm(focusId) {
   const url = safeUrl(m.link), usan = S.productos.filter(p => insLinks(p).some(l => l.id === m.id));
   box.innerHTML = `
     <div class="row" style="gap:12px;align-items:center" id="mmFoto">${fotoInsBox(m)}</div>
-    <div class="field"><span class="lbl">Categoría</span><div class="chips">${CATS.map(c => `<button class="chip" type="button" data-action="mm-cat" data-v="${c}" aria-pressed="${m.categoria === c}">${c}</button>`).join("")}</div></div>
+    <div class="field"><span class="lbl">Categoría</span><div class="chips">${catsTodas().map(c => `<button class="chip" type="button" data-action="mm-cat" data-v="${esc(c)}" aria-pressed="${m.categoria === c}">${esc(c)}</button>`).join("")}</div></div>
+    ${m.categoria === "Otro" ? `<div class="field"><label for="mm_nuevacat">Nueva categoría (opcional)</label><input id="mm_nuevacat" data-mm="nuevaCat" value="${esc(m.nuevaCat || "")}" placeholder="Ej: Letras, Perlas, Argollas"><span class="muted small">Si la escribes, se crea y te queda para los demás insumos.</span></div>` : ""}
     <div class="field"><label for="mm_nombre">Nombre</label><input id="mm_nombre" data-mm="nombre" value="${esc(m.nombre)}"></div>
     <div class="field"><label for="mm_link">Link de compra</label><input id="mm_link" type="url" data-mm="link" value="${esc(m.link)}" placeholder="https://"></div>
     ${selectProv(m.proveedorId, "mm")}
@@ -1397,10 +1400,11 @@ document.addEventListener("click", e => {
       S.materia.filter(m => m.proveedorId === v.id && m.lugar !== v.nombre).forEach(m => { m.lugar = v.nombre; guardar("materia", m); });
       guardar("proveedores", v); closeSheet(); ui.matSeg = "proveedores"; if (tab !== "materia") go("materia"); else render(); toast("Proveedor guardado"); break; }
     case "copiar": { const txt = v; (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast("Copiado"), () => toast(txt)); break; }
-    case "mm-cat": editingMat.categoria = editingMat.categoria === v ? "" : v; drawMatForm(); break;
+    case "mm-cat": editingMat.categoria = editingMat.categoria === v ? "" : v; drawMatForm(v === "Otro" && editingMat.categoria === "Otro" ? "mm_nuevacat" : undefined); break;
     case "mm-traer": { const m = editingMat; toast("Buscando la foto…"); fotoDeLink(m.link).then(img => { if (editingMat !== m) return; if (img) { m.foto = img; m.fotoIntento = m.link; const b = $id("mmFoto"); if (b) b.innerHTML = fotoInsBox(m); toast("Foto lista. Dale Guardar"); } else toast(img === null ? "No se pudo conectar. Intenta otra vez" : "Esa página no deja sacar la foto. Súbela tú"); }); break; }
     case "mm-quitar-foto": { const m = editingMat; m.foto = ""; m.fotoIntento = m.link; const b = $id("mmFoto"); if (b) b.innerHTML = fotoInsBox(m); break; }
     case "save-mat": { const m = editingMat; if (!m.nombre.trim()) { toast("Ponle nombre"); return; }
+      if (m.nuevaCat && m.nuevaCat.trim()) { const nc = m.nuevaCat.trim(), cap = nc.charAt(0).toUpperCase() + nc.slice(1), ya = catsTodas().find(c => c.toLowerCase() === cap.toLowerCase()); m.categoria = ya || cap; } delete m.nuevaCat;
       if (+m.proveedorId) { m.proveedorId = +m.proveedorId; m.lugar = (S.proveedores.find(v => v.id === m.proveedorId) || {}).nombre || m.lugar; } else delete m.proveedorId;
       m.cantidadIngresada = dec(m.cantidadIngresada); m.cantidad = baseCantidad(m) || m.cantidad; m.precio = num(m.precio); if (m.cuentasPorGramo) m.cuentasPorGramo = num(m.cuentasPorGramo); if (m.porTira) m.porTira = dec(m.porTira);
       const i = S.materia.findIndex(x => x.id === m.id); if (i >= 0) S.materia[i] = m; else S.materia.push(m); guardar("materia", m); closeSheet(); render(); toast("Guardado"); break; }
