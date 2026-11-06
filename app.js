@@ -51,7 +51,11 @@ const serStyle = id => { const s = serie(id); return `--sc:${s.sc};--si:${s.si}`
 const safeUrl = u => /^https?:\/\//i.test(String(u || "").trim()) ? String(u).trim() : "";
 
 /* Fotos de productos: bucket público "fotos" en Supabase Storage, una carpeta por usuario */
-const fotoUrl = p => p && p.foto ? window.BLU_CONFIG.supabaseUrl + "/storage/v1/object/public/fotos/" + p.foto : "";
+const rutaFoto = f => !f ? "" : /^https?:/i.test(f) ? f : window.BLU_CONFIG.supabaseUrl + "/storage/v1/object/public/fotos/" + f;
+/* Reventa: el producto y su insumo comparten la foto (si uno no tiene, usa la del otro) */
+const fotoUrl = p => { if (!p) return ""; if (p.foto) return rutaFoto(p.foto); if (!p.insumos || !S.materia) return ""; const m = insLinks(p).map(l => S.materia.find(x => x.id === l.id)).find(x => x && x.foto && catDe(x) === "Reventa"); return m ? rutaFoto(m.foto) : ""; };
+/* Saca el link de un texto compartido (ej. "1 pieza Collar… https://onelink.shein.com/…") */
+const extraerUrl = t => { const m = String(t || "").match(/https?:\/\/[^\s"'<>]+/i); return m ? m[0].replace(/[),.;]+$/, "") : String(t || "").trim(); };
 const prodDe = codigo => codigo == null ? null : S.productos.find(x => x.codigo === codigo);
 const thumb = (p, cls = "") => { const u = fotoUrl(p); return u ? `<img class="thumb ${cls}" src="${esc(u)}" alt="" loading="lazy" decoding="async">` : `<span class="thumb ph ${cls}" aria-hidden="true"></span>`; };
 async function comprimirFoto(file) {
@@ -516,7 +520,7 @@ const logoUrl = v => v && v.logo ? window.BLU_CONFIG.supabaseUrl + "/storage/v1/
 const logo = (v, cls = "") => { const u = logoUrl(v); return u ? `<img class="logo-prov ${cls}" src="${esc(u)}" alt="" loading="lazy">` : `<span class="logo-prov ph ${cls}" aria-hidden="true">${esc((v && v.nombre || "?").trim().charAt(0).toUpperCase())}</span>`; };
 
 /* Foto de cada insumo: se trae sola del link de compra (función og-image en Supabase) o se sube a mano */
-const insFoto = m => !m || !m.foto ? "" : /^https?:/i.test(m.foto) ? m.foto : window.BLU_CONFIG.supabaseUrl + "/storage/v1/object/public/fotos/" + m.foto;
+const insFoto = m => { if (!m) return ""; if (m.foto) return rutaFoto(m.foto); if (catDe(m) !== "Reventa") return ""; const p = S.productos.find(x => x.foto && insLinks(x).some(l => l.id === m.id)); return p ? rutaFoto(p.foto) : ""; };
 const insThumb = (m, cls = "") => { const u = insFoto(m); return u ? `<img class="thumb ${cls}" src="${esc(u)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.outerHTML='<span class=&quot;thumb ph ${cls}&quot;></span>'">` : `<span class="thumb ph ${cls}" aria-hidden="true"></span>`; };
 async function fotoDeLink(link) {
   const u = safeUrl(link); if (!u) return "";
@@ -1405,6 +1409,7 @@ document.addEventListener("click", e => {
     case "mm-quitar-foto": { const m = editingMat; m.foto = ""; m.fotoIntento = m.link; const b = $id("mmFoto"); if (b) b.innerHTML = fotoInsBox(m); break; }
     case "save-mat": { const m = editingMat; if (!m.nombre.trim()) { toast("Ponle nombre"); return; }
       if (m.nuevaCat && m.nuevaCat.trim()) { const nc = m.nuevaCat.trim(), cap = nc.charAt(0).toUpperCase() + nc.slice(1), ya = catsTodas().find(c => c.toLowerCase() === cap.toLowerCase()); m.categoria = ya || cap; } delete m.nuevaCat;
+      m.link = extraerUrl(m.link);
       if (+m.proveedorId) { m.proveedorId = +m.proveedorId; m.lugar = (S.proveedores.find(v => v.id === m.proveedorId) || {}).nombre || m.lugar; } else delete m.proveedorId;
       m.cantidadIngresada = dec(m.cantidadIngresada); m.cantidad = baseCantidad(m) || m.cantidad; m.precio = num(m.precio); if (m.cuentasPorGramo) m.cuentasPorGramo = num(m.cuentasPorGramo); if (m.porTira) m.porTira = dec(m.porTira);
       const i = S.materia.findIndex(x => x.id === m.id); if (i >= 0) S.materia[i] = m; else S.materia.push(m); guardar("materia", m); closeSheet(); render(); toast("Guardado"); break; }
@@ -1433,6 +1438,7 @@ document.addEventListener("keydown", e => {
 });
 document.addEventListener("input", e => {
   const t = e.target;
+  if (t.dataset.mm === "link" || t.dataset.inf === "link") { const u = extraerUrl(t.value); if (u !== t.value.trim() && /^https?:/i.test(u)) t.value = u; }
   if (t.dataset.pzusa && editing) { const id = +t.dataset.pzusa, u = dec(t.value); editing.insumos = insLinks(editing).map(x => x.id === id ? { ...x, usa: u } : x);
     const m = S.materia.find(x => x.id === id), ps = $id("pzsub_" + id), ui2 = $id("usa_" + id), s2 = $id("sub_" + id); if (m && ps) ps.textContent = $u(unitario(m) * u); if (ui2) ui2.value = decTxt(u); if (m && s2) s2.textContent = $u(unitario(m) * u);
     window._noPz = true; bloquearCostos(); window._noPz = false; return; }
