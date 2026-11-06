@@ -466,6 +466,35 @@ const igHandle = v => { const u = igUrl(v); return u ? "@" + u.replace(/[?#].*$/
 const provNombre = m => (provDe(m) || {}).nombre || m.lugar || "";
 const logoUrl = v => v && v.logo ? window.BLU_CONFIG.supabaseUrl + "/storage/v1/object/public/fotos/" + v.logo : "";
 const logo = (v, cls = "") => { const u = logoUrl(v); return u ? `<img class="logo-prov ${cls}" src="${esc(u)}" alt="" loading="lazy">` : `<span class="logo-prov ph ${cls}" aria-hidden="true">${esc((v && v.nombre || "?").trim().charAt(0).toUpperCase())}</span>`; };
+
+/* Foto de cada insumo: se trae sola del link de compra (función og-image en Supabase) o se sube a mano */
+const insFoto = m => !m || !m.foto ? "" : /^https?:/i.test(m.foto) ? m.foto : window.BLU_CONFIG.supabaseUrl + "/storage/v1/object/public/fotos/" + m.foto;
+const insThumb = (m, cls = "") => { const u = insFoto(m); return u ? `<img class="thumb ${cls}" src="${esc(u)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.outerHTML='<span class=&quot;thumb ph ${cls}&quot;></span>'">` : `<span class="thumb ph ${cls}" aria-hidden="true"></span>`; };
+async function fotoDeLink(link) {
+  const u = safeUrl(link); if (!u) return "";
+  try { const { data, error } = await sb.functions.invoke("og-image", { body: { url: u } }); if (error) throw error; return (data && data.img) || ""; }
+  catch (e) { console.error(e); return null; }
+}
+let traendoFotos = false;
+async function traerFotos() {
+  if (traendoFotos) return;
+  const pend = S.materia.filter(m => safeUrl(m.link) && !m.foto && m.fotoIntento !== m.link); if (!pend.length) return;
+  traendoFotos = true; let ok = 0;
+  for (const m of pend) { const img = await fotoDeLink(m.link); if (img === null) continue; m.fotoIntento = m.link; if (img) { m.foto = img; ok++; } guardar("materia", m); }
+  traendoFotos = false;
+  if (ok) { toast(ok + (ok > 1 ? " fotos traídas" : " foto traída") + " de los links"); if (tab === "materia" && !$id("matForm")) render(); }
+}
+async function subirFotoIns(m, file) {
+  toast("Subiendo foto…");
+  try {
+    const blob = await comprimirFoto(file), path = uid + "/ins-" + m.id + "-" + Date.now() + ".jpg";
+    const { error } = await sb.storage.from("fotos").upload(path, blob, { contentType: "image/jpeg", cacheControl: "31536000", upsert: false });
+    if (error) throw error;
+    const vieja = m.foto; m.foto = path; if (vieja && !/^https?:/i.test(vieja)) sb.storage.from("fotos").remove([vieja]).catch(() => {});
+    return true;
+  } catch (e) { console.error(e); toast("No se pudo subir la foto. Revisa tu conexión"); return false; }
+}
+const fotoInsBox = m => `${insThumb(m, "lg")}<div class="row wrap" style="gap:8px">${safeUrl(m.link) ? `<button class="btn sm" type="button" data-action="mm-traer">${m.foto ? "Volver a traer del link" : "Traer foto del link"}</button>` : ""}<label class="btn sm ghost filebtn">${m.foto ? "Cambiar" : "Subir foto"}<input type="file" id="mmFotoIn" accept="image/*"></label>${m.foto ? `<button class="btn sm ghost" type="button" data-action="mm-quitar-foto">Quitar</button>` : ""}</div>`;
 function provPorLink(link) {
   const l = buscaEn(lugarDeLink(link)); if (!l) return null;
   return S.proveedores.find(v => { const n = buscaEn(v.nombre); return n && (n.includes(l) || l.includes(n.split(" ").pop())); }) || null;
@@ -486,8 +515,9 @@ function vMateria() {
   const chips = `<div class="scroller"><button class="chip" type="button" data-action="mat-cat" data-v="*" aria-pressed="${ui.matCat == null}">Todos</button>${todosG.map(([c, l]) => `<button class="chip" type="button" data-action="mat-cat" data-v="${esc(c)}" aria-pressed="${ui.matCat === c}">${c || "Sin categoría"} (${l.length})</button>`).join("")}</div>`;
   const fila = m => { const url = safeUrl(m.link), ic = infoCat(m), cant = dec(m.cantidadIngresada) || dec(m.cantidad), pres = m.presentacion === "docenas" ? (cant === 1 ? "docena" : "docenas") : (cant === 1 ? ic.u : ic.pl), s = buscaEn(m.nombre + " " + provNombre(m) + " " + catDe(m));
     return `<div class="prow tappable" data-action="edit-mat" data-id="${m.id}" role="button" tabindex="0" data-s="${esc(s)}"${q && !s.includes(q) ? " hidden" : ""}>
-    ${logo(provDe(m) || { nombre: provNombre(m) }, "sm")}<div class="grow"><div class="name">${esc(m.nombre)}</div><div class="muted small">${esc(provNombre(m))} · ${decTxt(cant)} ${pres} por ${$(m.precio)} · <b class="num">${$u(unitario(m))}</b> ${ic.c}</div></div>
+    ${insThumb(m)}<div class="grow"><div class="name">${esc(m.nombre)}</div><div class="muted small">${logo(provDe(m) || { nombre: provNombre(m) }, "xs")} ${esc(provNombre(m))} · ${decTxt(cant)} ${pres} por ${$(m.precio)} · <b class="num">${$u(unitario(m))}</b> ${ic.c}</div></div>
     ${url ? `<a class="buy" href="${esc(url)}" target="_blank" rel="noopener">Comprar</a>` : ""}</div>`; };
+  setTimeout(traerFotos, 400);
   return `${tabs}<div class="row"><input class="search grow" id="matQ" data-input="matQ" placeholder="Buscar insumo o proveedor" value="${esc(ui.matQ)}" aria-label="Buscar insumo"><button class="btn" type="button" data-action="new-mat">+ Insumo</button></div>
   ${chips}
   ${grupos.length ? grupos.map(([c, l]) => `<h3 style="margin-top:4px">${c || "Sin categoría"} <span class="muted">(${l.length})</span></h3>
@@ -1009,6 +1039,7 @@ function drawMatForm(focusId) {
   const m = editingMat, box = $id("matForm"); if (!box || !m) return;
   const url = safeUrl(m.link), usan = S.productos.filter(p => insLinks(p).some(l => l.id === m.id));
   box.innerHTML = `
+    <div class="row" style="gap:12px;align-items:center" id="mmFoto">${fotoInsBox(m)}</div>
     <div class="field"><span class="lbl">Categoría</span><div class="chips">${CATS.map(c => `<button class="chip" type="button" data-action="mm-cat" data-v="${c}" aria-pressed="${m.categoria === c}">${c}</button>`).join("")}</div></div>
     <div class="field"><label for="mm_nombre">Nombre</label><input id="mm_nombre" data-mm="nombre" value="${esc(m.nombre)}"></div>
     <div class="field"><label for="mm_link">Link de compra</label><input id="mm_link" type="url" data-mm="link" value="${esc(m.link)}" placeholder="https://"></div>
@@ -1285,6 +1316,8 @@ document.addEventListener("click", e => {
       guardar("proveedores", v); closeSheet(); ui.matSeg = "proveedores"; if (tab !== "materia") go("materia"); else render(); toast("Proveedor guardado"); break; }
     case "copiar": { const txt = v; (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast("Copiado"), () => toast(txt)); break; }
     case "mm-cat": editingMat.categoria = editingMat.categoria === v ? "" : v; drawMatForm(); break;
+    case "mm-traer": { const m = editingMat; toast("Buscando la foto…"); fotoDeLink(m.link).then(img => { if (editingMat !== m) return; if (img) { m.foto = img; m.fotoIntento = m.link; const b = $id("mmFoto"); if (b) b.innerHTML = fotoInsBox(m); toast("Foto lista. Dale Guardar"); } else toast(img === null ? "No se pudo conectar. Intenta otra vez" : "Esa página no deja sacar la foto. Súbela tú"); }); break; }
+    case "mm-quitar-foto": { const m = editingMat; m.foto = ""; m.fotoIntento = m.link; const b = $id("mmFoto"); if (b) b.innerHTML = fotoInsBox(m); break; }
     case "save-mat": { const m = editingMat; if (!m.nombre.trim()) { toast("Ponle nombre"); return; }
       if (+m.proveedorId) { m.proveedorId = +m.proveedorId; m.lugar = (S.proveedores.find(v => v.id === m.proveedorId) || {}).nombre || m.lugar; } else delete m.proveedorId;
       m.cantidadIngresada = dec(m.cantidadIngresada); m.cantidad = baseCantidad(m) || m.cantidad; m.precio = num(m.precio); if (m.cuentasPorGramo) m.cuentasPorGramo = num(m.cuentasPorGramo);
@@ -1327,6 +1360,7 @@ document.addEventListener("input", e => {
   }
   if (t.dataset.pp && editing) { const k = t.dataset.pp; editing[k] = (k === "nombre" || k === "tipo") ? t.value : (k === "stock" ? (parseInt(t.value, 10) || 0) : num(t.value)); drawProdTot(); return; }
   if (t.dataset.mm && editingMat) { const k = t.dataset.mm; editingMat[k] = t.value;
+    if (k === "link") { const m = editingMat; clearTimeout(window._linkT); window._linkT = setTimeout(() => { const b = $id("mmFoto"); if (b && editingMat === m) b.innerHTML = fotoInsBox(m); if (!m.foto && safeUrl(m.link)) fotoDeLink(m.link).then(img => { if (img && editingMat === m && !m.foto) { m.foto = img; m.fotoIntento = m.link; const b2 = $id("mmFoto"); if (b2) b2.innerHTML = fotoInsBox(m); } }); }, 700); }
     if (k === "link") { const v = provPorLink(t.value), el = $id("mm_prov"); if (v && el && !el.value) { editingMat.proveedorId = v.id; el.value = String(v.id); } else { const l = lugarDeLink(t.value), le = $id("mm_lugar"); if (l && le && !le.value) { editingMat.lugar = l; le.value = l; } } }
     if (k === "proveedorId") { drawMatForm(); return; }
     refrescarPU(editingMat, "mm"); return; }
@@ -1356,6 +1390,8 @@ document.addEventListener("change", e => {
   if (t.dataset.pp && editing && (t.dataset.pp === "nombre" || t.dataset.pp === "tipo")) { editing[t.dataset.pp] = t.value; drawProdTot(); }
   if (t.dataset.cc && editingC) editingC[t.dataset.cc] = t.value;
   if (t.id === "fileImport" && t.files && t.files[0]) importar(t.files[0]);
+  if (t.id === "mmFotoIn" && t.files && t.files[0] && editingMat) { const m = editingMat; subirFotoIns(m, t.files[0]).then(ok => { if (!ok) return;
+    const real = S.materia.find(x => x.id === m.id); if (real) { real.foto = m.foto; guardar("materia", real); } const b = $id("mmFoto"); if (b && editingMat === m) b.innerHTML = fotoInsBox(m); toast("Foto guardada"); }); }
   if (t.id === "pvLogoIn" && t.files && t.files[0] && editingProv) { const v = editingProv; subirLogo(v, t.files[0]).then(ok => { if (!ok) return;
     const real = S.proveedores.find(x => x.id === v.id); if (real) { real.logo = v.logo; guardar("proveedores", real); render(); } if (editingProv === v) drawProvLogo(); toast("Logo guardado"); }); }
   if (t.id === "ppFotoIn" && t.files && t.files[0] && editing) { const p = editing; subirFoto(p, t.files[0]).then(ok => {
