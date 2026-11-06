@@ -157,7 +157,13 @@ const esHecho = p => !!p.hecho || insLinks(p).some(l => { const m = S.materia.fi
 /* Collares, cadenitas y pulseras artesanales: cadena + dije + porta dije, escogidos de la materia prima */
 const esCollar = p => /cadenit|collar|pulsera|manilla/i.test(p.tipo || "") && !esHecho(p);
 const usaBase = p => /trio/i.test(p.tipo || "") ? 3 : /pareja/i.test(p.tipo || "") ? 2 : 1;
-const piezasDe = p => /manilla/i.test(p.tipo || "") ? [["Hilo", "Hilo"], ["Dije", "Dije (opcional)"], ["Mostacilla", "Mostacilla (opcional)"], ["Pasador", "Pasador (opcional)"]] : [["Cadena", "Cadena"], ["Dije", "Dije"], ["Porta dije", "Porta dije (opcional)"]];
+/* Piezas según el tipo + las categorías que ella crea (Cuentas, Fimo…). Las opcionales sin insumos no se muestran */
+const piezasDe = p => {
+  const base = /manilla/i.test(p.tipo || "") ? [["Hilo", "Hilo"], ["Dije", "Dije (opcional)"], ["Pasador", "Pasador (opcional)"], ["Mostacilla", "Mostacilla (opcional)"]] : [["Cadena", "Cadena"], ["Dije", "Dije"], ["Porta dije", "Porta dije (opcional)"], ["Pasador", "Pasador (opcional)"]];
+  const extra = catsTodas().filter(c => !CAT_INS[c]).map(c => [c, c + " (opcional)"]);
+  const hay = c => S.materia.some(m => catDe(m) === c), puesta = c => insLinks(p).some(l => { const m = S.materia.find(x => x.id === l.id); return m && catDe(m) === c; });
+  return base.concat(extra).filter(([c, l]) => !/opcional/.test(l) || hay(c) || puesta(c));
+};
 function drawPiezas() {
   const box = $id("ppPiezas"); if (!box || !editing || window._noPz) return; const p = editing;
   if (!esCollar(p)) { box.innerHTML = ""; return; }
