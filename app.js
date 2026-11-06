@@ -90,6 +90,7 @@ const CAT_INS = {
   "Dije": { u: "unidad", pl: "unidades", c: "c/u", doc: true },
   "Pasador": { u: "unidad", pl: "unidades", c: "c/u", doc: true },
   "Cadena": { u: "unidad", pl: "unidades", c: "c/u", doc: true },
+  "Porta dije": { u: "unidad", pl: "unidades", c: "c/u", doc: true },
   "Reventa": { u: "unidad", pl: "unidades", c: "c/u", doc: true },
   "Hilo": { u: "metro", pl: "metros", c: "por metro", doc: false },
   "Mostacilla": { u: "gramo", pl: "gramos", c: "por gramo", doc: false },
@@ -147,6 +148,17 @@ const remo = p => p.remodelacion || "pendiente";
 const baseLbl = p => /manilla/i.test(p.tipo || "") ? "Hilo" : /anillo/i.test(p.tipo || "") ? "Base" : "Cadena";
 /* Reventa: lo compra ya hecho (ej. collares de SHEIN): no lleva mano de obra */
 const esHecho = p => !!p.hecho || insLinks(p).some(l => { const m = S.materia.find(x => x.id === l.id); return m && catDe(m) === "Reventa"; });
+/* Collares, cadenitas y pulseras artesanales: cadena + dije + porta dije, escogidos de la materia prima */
+const esCollar = p => /cadenit|collar|pulsera/i.test(p.tipo || "") && !esHecho(p);
+const PIEZAS = [["Cadena", "Cadena"], ["Dije", "Dije"], ["Porta dije", "Porta dije (opcional)"]];
+function drawPiezas() {
+  const box = $id("ppPiezas"); if (!box || !editing) return; const p = editing;
+  if (!esCollar(p)) { box.innerHTML = ""; return; }
+  const links = insLinks(p), manual = !usaInsumos(p) && (n0(p.hilo) || n0(p.dije) || n0(p.compra));
+  box.innerHTML = `<div class="piezas">${PIEZAS.map(([cat, lbl]) => { const ops = S.materia.filter(m => catDe(m) === cat).sort((a, b) => a.nombre.localeCompare(b.nombre, "es")); const sel = links.map(l => S.materia.find(m => m.id === l.id)).find(m => m && catDe(m) === cat);
+    return `<div class="field"><label for="pz_${cat.replace(/ /g, "")}">${lbl}</label><select id="pz_${cat.replace(/ /g, "")}" data-pieza="${cat}"><option value="">${cat === "Porta dije" ? "No lleva" : "Escoge…"}</option>${ops.map(m => `<option value="${m.id}" ${sel && sel.id === m.id ? "selected" : ""}>${esc(m.nombre)} · ${$u(unitario(m))}</option>`).join("")}</select>${!ops.length ? `<span class="muted small">No tienes insumos de ${cat.toLowerCase()} en Materia.</span>` : ""}</div>`; }).join("")}</div>
+    ${manual ? `<p class="muted small" style="margin:0">Mientras no escojas, se usan los valores que tenía: ${n0(p.hilo) ? "cadena " + $(p.hilo) : ""}${n0(p.hilo) && n0(p.dije) ? ", " : ""}${n0(p.dije) ? "dije " + $(p.dije) : ""}${n0(p.compra) ? (n0(p.hilo) || n0(p.dije) ? ", " : "") + "otros " + $(p.compra) : ""}.</p>` : ""}`;
+}
 const manoDe = p => esHecho(p) ? 0 : n0(p.manoObra);
 const activos = () => S.productos.filter(p => remo(p) !== "archivado");
 
@@ -976,6 +988,7 @@ function bloquearCostos() {
   if (!editing) return; const auto = usaInsumos(editing), mat = auto ? materialesDe(editing) : null;
   ["hilo", "dije", "mostacillas", "compra"].forEach(k => { const el = $id("pp_" + k); if (!el) return; el.readOnly = auto; el.classList.toggle("auto", auto); if (auto) el.value = miles(mat[k]) || "0"; });
   const eb = $id("ppEmp"); if (eb) eb.innerHTML = empaqueBox(editing);
+  drawPiezas();
   drawProdTot();
 }
 
@@ -1059,7 +1072,8 @@ function editProd(codigo) {
     <div class="grid2"><div class="field"><label for="pp_tipo">Tipo</label><select id="pp_tipo" data-pp="tipo">${TIPOS.map(t => `<option ${t === p.tipo ? "selected" : ""}>${t}</option>`).join("")}</select></div>${f("stock", "Stock")}</div>
     <div class="field"><span class="lbl">Origen</span><div class="seg" id="ppHecho"><button type="button" data-action="pp-hecho" data-v="0" aria-pressed="${!esHecho(p)}">Artesanal</button><button type="button" data-action="pp-hecho" data-v="1" aria-pressed="${esHecho(p)}">Reventa</button></div></div>
     <h3>Costos</h3>
-    <div class="grid3 ${esHecho(p) ? "es-hecho" : ""}" id="ppCostos">${f("hilo", baseLbl(p), "solo-armo")}${f("dije", "Dije", "solo-armo")}${f("mostacillas", "Mostacillas", "solo-armo")}${f("compra", esHecho(p) ? "Lo compraste a" : "Compra")}${f("manoObra", "Mano de obra", "solo-armo")}</div>
+    <div id="ppPiezas"></div>
+    <div class="grid3 ${esHecho(p) ? "es-hecho" : ""} ${esCollar(p) ? "es-collar" : ""}" id="ppCostos">${f("hilo", baseLbl(p), "solo-armo no-collar")}${f("dije", "Dije", "solo-armo no-collar")}${f("mostacillas", "Mostacillas", "solo-armo no-collar")}${f("compra", esHecho(p) ? "Lo compraste a" : "Compra", "no-collar")}${f("manoObra", "Mano de obra", "solo-armo")}</div>
     <div id="ppEmp"></div>
     <h3>Precios</h3>
     <div class="grid2">${f("mayor", "Por mayor")}${f("menor", "Detal")}</div>
@@ -1078,7 +1092,7 @@ function drawProdFoto() {
 function drawProdTot() {
   const p = editing, c = costoProd(p), el = $id("ppTot"); if (!el) return;
   const hecho = esHecho(p), lh = $id("lbl_hilo"), lc = $id("lbl_compra"), g = $id("ppCostos");
-  if (lh) lh.textContent = baseLbl(p); if (lc) lc.textContent = hecho ? "Lo compraste a" : "Compra"; if (g) g.classList.toggle("es-hecho", hecho);
+  if (lh) lh.textContent = baseLbl(p); if (lc) lc.textContent = hecho ? "Lo compraste a" : "Compra"; if (g) { g.classList.toggle("es-hecho", hecho); const col = esCollar(p); if (g.classList.contains("es-collar") !== col) { g.classList.toggle("es-collar", col); drawPiezas(); } }
   document.querySelectorAll("#ppHecho button").forEach(b => b.setAttribute("aria-pressed", String((b.dataset.v === "1") === hecho)));
   el.innerHTML = `<div><span>Costo de fabricación</span><span>${$(c)}</span></div>
     <div style="color:${p.mayor - c < 0 ? "var(--loss)" : "inherit"}"><span>Ganancia por mayor</span><span>${$(p.mayor - c)}</span></div>
@@ -1447,6 +1461,9 @@ document.addEventListener("input", e => {
 document.addEventListener("change", e => {
   const t = e.target;
   if (t.dataset.change === "mes") { ui.ventasMes = t.value; render(); }
+  if (t.dataset.pieza && editing) { const cat = t.dataset.pieza;
+    editing.insumos = insLinks(editing).filter(l => { const m = S.materia.find(x => x.id === l.id); return !m || catDe(m) !== cat; });
+    if (t.value) editing.insumos.push({ id: +t.value, usa: 1 }); drawProdIns(); return; }
   if (t.dataset.ins === "sel" && editing && t.value) { editing.insumos = [...insLinks(editing), { id: +t.value, usa: 1 }]; drawProdIns(); return; }
   if (t.dataset.change === "invmes") { ui.invMes = t.value; render(); }
   if (t.dataset.iv && editingInv) editingInv[t.dataset.iv] = t.value;

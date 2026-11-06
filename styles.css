@@ -329,3 +329,7 @@ nav.tabs svg{width:22px;height:22px}
 .seg:has(> :nth-child(3)) button{padding-inline:4px;white-space:nowrap}
 .es-hecho .solo-armo{display:none}
 .es-hecho{grid-template-columns:minmax(0,1fr)!important}
+.es-collar .no-collar{display:none}
+.es-collar{grid-template-columns:minmax(0,1fr)!important}
+.piezas{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px}
+.piezas .field:last-child{grid-column:1/-1}
