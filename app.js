@@ -118,7 +118,13 @@ const insLinks = p => (p.insumos || []).map(x => typeof x === "object" && x ? x 
 /* Base predeterminada: si el producto artesanal no tiene su hilo/nailon/cadena escogido, usa el de por defecto */
 const BASES = ["Hilo", "Nailon", "Cadena"];
 const baseDefecto = cat => { const ops = S.materia.filter(m => catDe(m) === cat); return ops.find(m => m.predeterminado) || (ops.length === 1 ? ops[0] : null); };
-const usaDefecto = (cat, p) => cat === "Hilo" ? Math.round(1.3 * usaBase(p) * 10) / 10 : usaBase(p);
+/* Tallas de collar (guía de Blu) + 10 cm para amarres */
+const TALLAS = [["Estándar", 35], ["Mediana", 41], ["Grande", 46], ["Extra grande", 50]];
+const MARGEN_NUDO = 10;
+const esCollarT = p => /collar/i.test(p.tipo || "");
+const tallaCm = p => (TALLAS.find(([n]) => n === p.talla) || TALLAS[0])[1];
+const nailonCollar = p => Math.round((tallaCm(p) + MARGEN_NUDO) / 100 * usaBase(p) * 100) / 100;
+const usaDefecto = (cat, p) => cat === "Hilo" ? Math.round(1.3 * usaBase(p) * 10) / 10 : cat === "Nailon" && esCollarT(p) ? nailonCollar(p) : usaBase(p);
 function linksEf(p) {
   const l = insLinks(p), cat = !esHecho(p) && baseCat(p); if (!cat) return l;
   if (l.some(x => { const m = S.materia.find(y => y.id === x.id); return m && catDe(m) === cat; })) return l;
@@ -189,7 +195,7 @@ function drawPiezas() {
   const links = linksEf(p), manual = false;
   box.innerHTML = `<div class="piezas">${piezasDe(p).map(([cat, lbl]) => { const ops = S.materia.filter(m => catDe(m) === cat).sort((a, b) => a.nombre.localeCompare(b.nombre, "es")); const sel = links.map(l => S.materia.find(m => m.id === l.id)).find(m => m && catDe(m) === cat);
     const ln = sel && links.find(l => l.id === sel.id), usa = ln ? dec(ln.usa) : 0, porDef = ln && ln.defecto;
-    return `<div class="field pieza"><label for="pz_${cat.replace(/ /g, "")}">${lbl}${porDef ? ' <span class="tag">por defecto</span>' : ""}</label><div class="row" style="gap:6px"><select class="grow" id="pz_${cat.replace(/ /g, "")}" data-pieza="${cat}"><option value="">${/opcional/.test(lbl) ? "No lleva" : "Escoge…"}</option>${ops.map(m => `<option value="${m.id}" ${sel && sel.id === m.id ? "selected" : ""}>${esc(m.nombre)} · ${$u(unitario(m))}</option>`).join("")}</select>${sel ? `<span class="muted small">×</span><input class="usa-in" inputmode="decimal" aria-label="Cuántas usa de ${esc(sel.nombre)}" data-pzusa="${sel.id}" value="${esc(decTxt(usa))}">` : ""}</div>${sel ? `<span class="muted small">${unidadTxt(sel, usa)} · <b class="num" id="pzsub_${sel.id}">${$u(unitario(sel) * usa)}</b></span>` : ""}${!ops.length ? `<span class="muted small">No tienes insumos de ${cat.toLowerCase()} en Materia.</span>` : ""}</div>`; }).join("")}</div>
+    return `<div class="field pieza"><label for="pz_${cat.replace(/ /g, "")}">${lbl}${porDef ? ' <span class="tag">por defecto</span>' : ""}</label><div class="row" style="gap:6px"><select class="grow" id="pz_${cat.replace(/ /g, "")}" data-pieza="${cat}"><option value="">${/opcional/.test(lbl) ? "No lleva" : "Escoge…"}</option>${ops.map(m => `<option value="${m.id}" ${sel && sel.id === m.id ? "selected" : ""}>${esc(m.nombre)} · ${$u(unitario(m))}</option>`).join("")}</select>${sel ? `<span class="muted small">×</span><input class="usa-in" inputmode="decimal" aria-label="Cuántas usa de ${esc(sel.nombre)}" data-pzusa="${sel.id}" value="${esc(decTxt(usa))}">` : ""}</div>${sel ? `<span class="muted small">${unidadTxt(sel, usa)} · <b class="num" id="pzsub_${sel.id}">${$u(unitario(sel) * usa)}</b></span>` : ""}${!ops.length ? `<span class="muted small">No tienes insumos de ${cat.toLowerCase()} en Materia.</span>` : ""}</div>${cat === "Nailon" && esCollarT(p) ? `<div class="field"><span class="lbl">Talla del collar</span><div class="chips">${TALLAS.map(([n, cm]) => `<button class="chip" type="button" data-action="pp-talla" data-v="${n}" aria-pressed="${(p.talla || "Estándar") === n}">${n} · ${cm} cm</button>`).join("")}</div><span class="muted small">Usa ${tallaCm(p)} cm + ${MARGEN_NUDO} cm para amarres${usaBase(p) > 1 ? " × " + usaBase(p) : ""} = ${decTxt(nailonCollar(p))} m de nailon</span></div>` : ""}`; }).join("")}</div>
     ${manual ? `<p class="muted small" style="margin:0">Mientras no escojas, se usan los valores que tenía: ${n0(p.hilo) ? baseLbl(p).toLowerCase() + " " + $(p.hilo) : ""}${n0(p.hilo) && n0(p.dije) ? ", " : ""}${n0(p.dije) ? "dije " + $(p.dije) : ""}${n0(p.mostacillas) ? ", mostacillas " + $(p.mostacillas) : ""}${n0(p.compra) ? (n0(p.hilo) || n0(p.dije) ? ", " : "") + "otros " + $(p.compra) : ""}.</p>` : ""}`;
 }
 const manoDe = p => esHecho(p) ? 0 : n0(p.manoObra);
@@ -1127,7 +1133,7 @@ function drawProdFoto() {
 function drawProdTot() {
   const p = editing, c = costoProd(p), el = $id("ppTot"); if (!el) return;
   const hecho = esHecho(p), lh = $id("lbl_hilo"), lc = $id("lbl_compra"), g = $id("ppCostos");
-  if (lh) lh.textContent = baseLbl(p); if (lc) lc.textContent = hecho ? "Lo compraste a" : "Compra"; if (g) { g.classList.toggle("es-hecho", hecho); const col = esCollar(p), kind = col ? piezasDe(p)[0][0] : ""; g.classList.toggle("es-collar", col); if (g.dataset.pz !== kind) { g.dataset.pz = kind; drawPiezas(); } }
+  if (lh) lh.textContent = baseLbl(p); if (lc) lc.textContent = hecho ? "Lo compraste a" : "Compra"; if (g) { g.classList.toggle("es-hecho", hecho); const col = esCollar(p), kind = col ? (p.tipo || "") : ""; g.classList.toggle("es-collar", col); if (g.dataset.pz !== kind) { g.dataset.pz = kind; drawPiezas(); } }
   document.querySelectorAll("#ppHecho button").forEach(b => b.setAttribute("aria-pressed", String((b.dataset.v === "1") === hecho)));
   el.innerHTML = `<div><span>Costo de fabricación</span><span>${$(c)}</span></div>
     <div style="color:${p.mayor - c < 0 ? "var(--loss)" : "inherit"}"><span>Ganancia por mayor</span><span>${$(p.mayor - c)}</span></div>
@@ -1421,6 +1427,7 @@ document.addEventListener("click", e => {
     case "quitar-logo": { const vieja = editingProv.logo; editingProv.logo = ""; if (vieja) sb.storage.from("fotos").remove([vieja]).catch(() => {}); const real = S.proveedores.find(x => x.id === editingProv.id); if (real) { real.logo = ""; guardar("proveedores", real); } drawProvLogo(); break; }
     case "ver-kit": closeSheet(); ui.matSeg = "empaque"; go("materia"); break;
     case "kit-edit": editKit(t.dataset.id); break;
+    case "pp-talla": { editing.talla = v; const nl = insLinks(editing).find(l => { const m = S.materia.find(x => x.id === l.id); return m && catDe(m) === "Nailon"; }); if (nl) nl.usa = nailonCollar(editing), editing.insumos = insLinks(editing).map(l => l.id === nl.id ? nl : l); drawProdIns(); break; }
     case "pp-hecho": { if (v === "0" && insLinks(editing).some(l => { const m = S.materia.find(x => x.id === l.id); return m && catDe(m) === "Reventa"; })) { toast("Quítale primero el insumo “Reventa” de abajo"); break; } editing.hecho = v === "1"; drawProdTot(); break; }
     case "kit-save": { const it = editingKit; if (!String(it.nombre).trim()) { toast("Ponle nombre"); return; } it.nombre = it.nombre.trim();
       const k = kit(), i = k.items.findIndex(x => x.id === it.id); if (i >= 0) k.items[i] = it; else k.items.push(it);
