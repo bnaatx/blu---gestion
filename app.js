@@ -1485,7 +1485,7 @@ document.addEventListener("change", e => {
   if (t.dataset.change === "mes") { ui.ventasMes = t.value; render(); }
   if (t.dataset.pieza && editing) { const cat = t.dataset.pieza;
     editing.insumos = insLinks(editing).filter(l => { const m = S.materia.find(x => x.id === l.id); return !m || catDe(m) !== cat; });
-    if (t.value) editing.insumos.push({ id: +t.value, usa: usaBase(editing) }); drawProdIns(); return; }
+    if (t.value) editing.insumos.push({ id: +t.value, usa: cat === "Hilo" ? Math.round(1.3 * usaBase(editing) * 10) / 10 : usaBase(editing) }); drawProdIns(); return; }
   if (t.dataset.ins === "sel" && editing && t.value) { editing.insumos = [...insLinks(editing), { id: +t.value, usa: 1 }]; drawProdIns(); return; }
   if (t.dataset.change === "invmes") { ui.invMes = t.value; render(); }
   if (t.dataset.iv && editingInv) editingInv[t.dataset.iv] = t.value;
