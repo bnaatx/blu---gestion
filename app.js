@@ -552,7 +552,7 @@ async function subirFotoIns(m, file) {
     return true;
   } catch (e) { console.error(e); toast("No se pudo subir la foto. Revisa tu conexión"); return false; }
 }
-const fotoInsBox = m => `${insThumb(m, "lg")}<div class="row wrap" style="gap:8px">${safeUrl(m.link) ? `<button class="btn sm" type="button" data-action="mm-traer">${m.foto ? "Volver a traer del link" : "Traer foto del link"}</button>` : ""}<label class="btn sm ghost filebtn">${m.foto ? "Cambiar" : "Subir foto"}<input type="file" id="mmFotoIn" accept="image/*"></label>${m.foto ? `<button class="btn sm ghost" type="button" data-action="mm-quitar-foto">Quitar</button>` : ""}</div>`;
+const fotoInsBox = m => `${insThumb(m, "lg")}<div class="row wrap" style="gap:8px">${safeUrl(m.link) ? `<button class="btn sm" type="button" data-action="mm-traer">${m.foto ? "Volver a traer del link" : "Traer foto del link"}</button>` : ""}<label class="btn sm ghost filebtn">${m.foto ? "Cambiar" : "Subir foto"}<input type="file" id="mmFotoIn" accept="image/*"></label>${m.foto ? `<button class="btn sm ghost" type="button" data-action="mm-quitar-foto">Quitar</button>` : ""}<span class="muted small solo-compu" style="flex-basis:100%">o pega un pantallazo con ⌘V, o arrastra la imagen aquí</span></div>`;
 function provPorLink(link) {
   const l = buscaEn(lugarDeLink(link)); if (!l) return null;
   return S.proveedores.find(v => { const n = buscaEn(v.nombre); return n && (n.includes(l) || l.includes(n.split(" ").pop())); }) || null;
@@ -635,7 +635,7 @@ function editProv(id) {
 }
 function drawProvLogo() {
   const el = $id("provLogo"); if (!el || !editingProv) return;
-  el.innerHTML = `${logo(editingProv, "xl")}<div class="row wrap" style="gap:8px"><label class="btn sm ${logoUrl(editingProv) ? "ghost" : ""} filebtn">${logoUrl(editingProv) ? "Cambiar logo" : "Agregar logo"}<input type="file" id="pvLogoIn" accept="image/*"></label>${logoUrl(editingProv) ? `<button class="btn sm ghost" type="button" data-action="quitar-logo">Quitar</button>` : ""}</div>`;
+  el.innerHTML = `${logo(editingProv, "xl")}<div class="row wrap" style="gap:8px"><label class="btn sm ${logoUrl(editingProv) ? "ghost" : ""} filebtn">${logoUrl(editingProv) ? "Cambiar logo" : "Agregar logo"}<input type="file" id="pvLogoIn" accept="image/*"></label>${logoUrl(editingProv) ? `<button class="btn sm ghost" type="button" data-action="quitar-logo">Quitar</button>` : ""}<span class="muted small solo-compu" style="flex-basis:100%">o pega un pantallazo con ⌘V, o arrastra la imagen aquí</span></div>`;
 }
 async function subirLogo(v, file) {
   toast("Subiendo logo…");
@@ -1102,7 +1102,7 @@ function drawProdFoto() {
   const u = fotoUrl(editing);
   el.innerHTML = `${u ? `<img class="foto-big" src="${esc(u)}" alt="Foto de ${esc(editing.nombre)}">` : `<div class="foto-big ph"><span>Sin foto</span></div>`}
     <div class="row" style="gap:8px"><label class="btn ${u ? "ghost" : ""} grow filebtn">${u ? "Cambiar foto" : "Agregar foto"}<input type="file" id="ppFotoIn" accept="image/*"></label>
-    ${u ? `<button class="btn ghost" type="button" data-action="quitar-foto">Quitar</button>` : ""}</div>`;
+    ${u ? `<button class="btn ghost" type="button" data-action="quitar-foto">Quitar</button>` : ""}</div><span class="muted small solo-compu" style="flex-basis:100%">o pega un pantallazo con ⌘V, o arrastra la imagen aquí</span>`;
 }
 function drawProdTot() {
   const p = editing, c = costoProd(p), el = $id("ppTot"); if (!el) return;
@@ -1521,3 +1521,17 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 /* ---------- Arranque ---------- */
 sb.auth.getSession().then(({ data }) => iniciar(data.session));
 sb.auth.onAuthStateChange((ev, session) => { if (ev === "SIGNED_OUT") iniciar(null); });
+
+/* En el computador: pegar un pantallazo (⌘V) o arrastrar una imagen sube la foto del producto, insumo o proveedor abierto */
+function fotoDesdeArchivo(f) {
+  const inp = sheetRoot.querySelector("#ppFotoIn, #mmFotoIn, #pvLogoIn"); if (!inp || !f) return false;
+  try { const file = new File([f], f.name && f.name !== "image.png" ? f.name : "pantallazo.png", { type: f.type || "image/png" }); const dt = new DataTransfer(); dt.items.add(file); inp.files = dt.files; inp.dispatchEvent(new Event("change", { bubbles: true })); return true; }
+  catch (e) { console.error(e); toast("Tu navegador no deja pegar la imagen. Usa Agregar foto"); return false; }
+}
+document.addEventListener("paste", e => {
+  const it = [...((e.clipboardData && e.clipboardData.items) || [])].find(i => i.kind === "file" && /^image\//.test(i.type)); if (!it) return;
+  if (!sheetRoot.querySelector("#ppFotoIn, #mmFotoIn, #pvLogoIn")) { toast("Abre primero el producto, insumo o proveedor para pegarle la foto"); return; }
+  e.preventDefault(); fotoDesdeArchivo(it.getAsFile());
+});
+document.addEventListener("dragover", e => { if (sheetRoot.querySelector("#ppFotoIn, #mmFotoIn, #pvLogoIn") && [...(e.dataTransfer.types || [])].includes("Files")) e.preventDefault(); });
+document.addEventListener("drop", e => { const f = [...((e.dataTransfer && e.dataTransfer.files) || [])].find(x => /^image\//.test(x.type)); if (f && sheetRoot.querySelector("#ppFotoIn, #mmFotoIn, #pvLogoIn")) { e.preventDefault(); fotoDesdeArchivo(f); } });
