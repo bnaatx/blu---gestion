@@ -339,3 +339,6 @@ nav.tabs svg{width:22px;height:22px}
 .solo-compu{display:none}
 @media (hover:hover) and (pointer:fine){.solo-compu{display:block}}
 .seg:has(> :nth-child(4)){grid-template-columns:repeat(4,minmax(0,1fr))}
+.palabras{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.palabras input{flex:1 1 140px;min-width:0;text-transform:uppercase}
+.palabras .muted{flex-basis:100%}
