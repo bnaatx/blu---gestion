@@ -117,7 +117,7 @@ const $u = n => n > 0 && n < 1000 && Math.round(n * 10) !== Math.round(n) * 10 ?
 const insLinks = p => (p.insumos || []).map(x => typeof x === "object" && x ? x : { id: x, usa: 1 });
 /* Base predeterminada: si el producto artesanal no tiene su hilo/nailon/cadena escogido, usa el de por defecto */
 const BASES = ["Hilo", "Nailon", "Cadena"];
-const baseDefecto = cat => { const ops = S.materia.filter(m => catDe(m) === cat); return ops.find(m => m.predeterminado) || (ops.length === 1 ? ops[0] : null); };
+const baseDefecto = cat => { const ops = S.materia.filter(m => catDe(m) === cat).sort((x, y) => x.id - y.id); return ops.find(m => m.predeterminado) || ops[0] || null; };
 /* Tallas de collar (guía de Blu) + 10 cm para amarres */
 const TALLAS = [["Estándar", 35], ["Mediana", 41], ["Grande", 46], ["Extra grande", 50]];
 const MARGEN_NUDO = 10;
