@@ -1117,7 +1117,7 @@ function editProd(codigo) {
     <div class="grid3 ${esHecho(p) ? "es-hecho" : ""} ${esCollar(p) ? "es-collar" : ""}" id="ppCostos">${f("hilo", baseLbl(p), "solo-armo no-collar")}${f("dije", "Dije", "solo-armo no-collar")}${f("mostacillas", "Mostacillas", "solo-armo no-collar")}${f("compra", esHecho(p) ? "Lo compraste a" : "Compra", "no-collar")}${f("manoObra", "Mano de obra", "solo-armo")}</div>
     <div id="ppEmp"></div>
     <h3>Precios</h3>
-    <div class="grid2">${f("mayor", "Por mayor")}${f("menor", "Detal")}</div>
+    <div class="grid2">${f("menor", "Detal")}${f("mayor", "Por mayor (−20%)")}</div>
     <div class="totals" id="ppTot"></div>
     <h3>Materia prima que usa</h3>
     <div id="ppIns" style="display:flex;flex-direction:column;gap:10px"></div>
@@ -1488,7 +1488,9 @@ document.addEventListener("input", e => {
   if (t.dataset.pp === "tipo" && editing && editing.tipo !== t.value) {
     const antes = editing.tipo; if (!n0(editing.manoObra) || n0(editing.manoObra) === MO_CAT[antes]) { editing.manoObra = MO_CAT[t.value] || 0; const mo = $id("pp_manoObra"); if (mo) mo.value = miles(editing.manoObra); }
   }
-  if (t.dataset.pp && editing) { const k = t.dataset.pp; editing[k] = (k === "nombre" || k === "tipo") ? t.value : (k === "stock" ? (parseInt(t.value, 10) || 0) : num(t.value)); drawProdTot(); return; }
+  if (t.dataset.pp && editing) { const k = t.dataset.pp; editing[k] = (k === "nombre" || k === "tipo") ? t.value : (k === "stock" ? (parseInt(t.value, 10) || 0) : num(t.value));
+    if (k === "menor") { editing.mayor = Math.round(editing.menor * 0.8 / 100) * 100; const em = $id("pp_mayor"); if (em) em.value = miles(editing.mayor) || ""; }
+    drawProdTot(); return; }
   if (t.dataset.mm && editingMat) { const k = t.dataset.mm; editingMat[k] = t.type === "checkbox" ? t.checked : t.value;
     if (k === "link") { const m = editingMat; clearTimeout(window._linkT); window._linkT = setTimeout(() => { const b = $id("mmFoto"); if (b && editingMat === m) b.innerHTML = fotoInsBox(m); if (!m.foto && safeUrl(m.link)) fotoDeLink(m.link).then(img => { if (img && editingMat === m && !m.foto) { m.foto = img; m.fotoIntento = m.link; const b2 = $id("mmFoto"); if (b2) b2.innerHTML = fotoInsBox(m); } }); }, 700); }
     if (k === "link") { const v = provPorLink(t.value), el = $id("mm_prov"); if (v && el && !el.value) { editingMat.proveedorId = v.id; el.value = String(v.id); } else { const l = lugarDeLink(t.value), le = $id("mm_lugar"); if (l && le && !le.value) { editingMat.lugar = l; le.value = l; } } }
