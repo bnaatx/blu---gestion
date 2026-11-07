@@ -97,6 +97,7 @@ const CAT_INS = {
   "Porta dije": { u: "unidad", pl: "unidades", c: "c/u", doc: true },
   "Reventa": { u: "unidad", pl: "unidades", c: "c/u", doc: true },
   "Hilo": { u: "metro", pl: "metros", c: "por metro", doc: false },
+  "Nailon": { u: "metro", pl: "metros", c: "por metro", doc: false },
   "Mostacilla": { u: "gramo", pl: "gramos", c: "por gramo", doc: false },
   "Empaque": { u: "unidad", pl: "unidades", c: "c/u", doc: true },
   "Otro": { u: "unidad", pl: "unidades", c: "c/u", doc: true },
@@ -119,7 +120,7 @@ function materialesDe(p) {
   const r = { hilo: 0, dije: 0, mostacillas: 0, compra: 0 };
   insLinks(p).forEach(({ id, usa }) => { const m = S.materia.find(x => x.id === id); if (!m) return;
     const v = unitario(m) * dec(usa), c = catDe(m);
-    if (c === "Hilo" || c === "Cadena") r.hilo += v; else if (c === "Dije") r.dije += v; else if (c === "Mostacilla") r.mostacillas += v; else if (c !== "Empaque") r.compra += v; });
+    if (c === "Hilo" || c === "Cadena" || c === "Nailon") r.hilo += v; else if (c === "Dije") r.dije += v; else if (c === "Mostacilla") r.mostacillas += v; else if (c !== "Empaque") r.compra += v; });
   Object.keys(r).forEach(k => r[k] = Math.round(r[k]));
   return r;
 }
@@ -154,7 +155,9 @@ const empaqueBox = (p, editable) => { const e = empaqueDe(p); return `<details c
 function costoProd(p) { const c = costosDe(p); return c.hilo + c.dije + c.mostacillas + c.compra + manoDe(p) + empaqueDe(p).total; }
 const remo = p => p.remodelacion || "pendiente";
 /* Base del producto: hilo solo en manillas; collares, cadenitas y pulseras van en cadena */
-const baseLbl = p => /manilla/i.test(p.tipo || "") ? "Hilo" : /anillo/i.test(p.tipo || "") ? "Base" : "Cadena";
+/* Base fija por tipo: manillas → hilo, pulseras y collares → nailon, cadenitas → cadena */
+const baseCat = p => { const t = p.tipo || ""; return /manilla/i.test(t) ? "Hilo" : /pulsera|collar/i.test(t) ? "Nailon" : /cadenit/i.test(t) ? "Cadena" : ""; };
+const baseLbl = p => baseCat(p) || "Base";
 /* Reventa: lo compra ya hecho (ej. collares de SHEIN): no lleva mano de obra */
 const esHecho = p => !!p.hecho || insLinks(p).some(l => { const m = S.materia.find(x => x.id === l.id); return m && catDe(m) === "Reventa"; });
 /* Collares, cadenitas y pulseras artesanales: cadena + dije + porta dije, escogidos de la materia prima */
@@ -162,7 +165,11 @@ const esCollar = p => !esHecho(p);
 const usaBase = p => /trio/i.test(p.tipo || "") ? 3 : /pareja/i.test(p.tipo || "") ? 2 : 1;
 /* Piezas según el tipo + las categorías que ella crea (Cuentas, Fimo…). Las opcionales sin insumos no se muestran */
 const piezasDe = p => {
-  const base = /anillo/i.test(p.tipo || "") ? [["Dije", "Dije (opcional)"], ["Pasador", "Pasador (opcional)"]] : /manilla/i.test(p.tipo || "") ? [["Hilo", "Hilo"], ["Dije", "Dije (opcional)"], ["Pasador", "Pasador (opcional)"], ["Mostacilla", "Mostacilla (opcional)"]] : [["Cadena", "Cadena"], ["Dije", "Dije"], ["Porta dije", "Porta dije (opcional)"], ["Pasador", "Pasador (opcional)"]];
+  const b = baseCat(p);
+  const base = b === "Hilo" ? [["Hilo", "Hilo"], ["Dije", "Dije (opcional)"], ["Pasador", "Pasador (opcional)"], ["Mostacilla", "Mostacilla (opcional)"]]
+    : b === "Nailon" ? [["Nailon", "Nailon"], ["Dije", "Dije (opcional)"], ["Porta dije", "Porta dije (opcional)"], ["Mostacilla", "Mostacilla (opcional)"], ["Pasador", "Pasador (opcional)"]]
+    : b === "Cadena" ? [["Cadena", "Cadena"], ["Dije", "Dije"], ["Porta dije", "Porta dije (opcional)"], ["Pasador", "Pasador (opcional)"]]
+    : [["Dije", "Dije (opcional)"], ["Pasador", "Pasador (opcional)"]];
   const extra = catsTodas().filter(c => !CAT_INS[c]).map(c => [c, c + " (opcional)"]);
   const hay = c => S.materia.some(m => catDe(m) === c), puesta = c => insLinks(p).some(l => { const m = S.materia.find(x => x.id === l.id); return m && catDe(m) === c; });
   return base.concat(extra).filter(([c, l]) => !/opcional/.test(l) || hay(c) || puesta(c));
