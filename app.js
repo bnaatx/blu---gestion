@@ -193,9 +193,20 @@ function drawPiezas() {
   const box = $id("ppPiezas"); if (!box || !editing || window._noPz) return; const p = editing;
   if (!esCollar(p)) { box.innerHTML = ""; return; }
   const links = linksEf(p), manual = false;
-  box.innerHTML = `<div class="piezas">${piezasDe(p).map(([cat, lbl]) => { const ops = S.materia.filter(m => catDe(m) === cat).sort((a, b) => a.nombre.localeCompare(b.nombre, "es")); const sel = links.map(l => S.materia.find(m => m.id === l.id)).find(m => m && catDe(m) === cat);
-    const ln = sel && links.find(l => l.id === sel.id), usa = ln ? dec(ln.usa) : 0, porDef = ln && ln.defecto;
-    return `<div class="field pieza"><label for="pz_${cat.replace(/ /g, "")}">${lbl}${porDef ? ' <span class="tag">por defecto</span>' : ""}</label><div class="row" style="gap:6px"><select class="grow" id="pz_${cat.replace(/ /g, "")}" data-pieza="${cat}"><option value="">${/opcional/.test(lbl) ? "No lleva" : "Escoge…"}</option>${ops.map(m => `<option value="${m.id}" ${sel && sel.id === m.id ? "selected" : ""}>${esc(m.nombre)} · ${$u(unitario(m))}</option>`).join("")}</select>${sel ? `<span class="muted small">×</span><input class="usa-in" inputmode="decimal" aria-label="Cuántas usa de ${esc(sel.nombre)}" data-pzusa="${sel.id}" value="${esc(decTxt(usa))}">` : ""}</div>${sel ? `<span class="muted small">${unidadTxt(sel, usa)} · <b class="num" id="pzsub_${sel.id}">${$u(unitario(sel) * usa)}</b></span>` : ""}${sel && esLetras(sel) ? `<div class="palabras">${Array.from({ length: usaBase(p) }, (_, i) => `<input data-palabra="${i}" data-ins="${sel.id}" value="${esc((p.palabras || [])[i] || "")}" placeholder="${usaBase(p) > 1 ? "Palabra manilla " + (i + 1) : "Palabra"}" autocapitalize="characters" aria-label="Palabra ${i + 1}">`).join("")}<span class="muted small" id="pal_n">${p.palabras && p.palabras.some(Boolean) ? contarLetras(p.palabras) + " letras" : "Escribe la palabra y la app cuenta las letras"}</span></div>` : ""}${!ops.length ? `<span class="muted small">No tienes insumos de ${cat.toLowerCase()} en Materia.</span>` : ""}</div>${cat === "Nailon" && esCollarT(p) ? `<div class="field"><span class="lbl">Talla del collar</span><div class="chips">${TALLAS.map(([n, cm]) => `<button class="chip" type="button" data-action="pp-talla" data-v="${n}" aria-pressed="${(p.talla || "Estándar") === n}">${n} · ${cm} cm</button>`).join("")}</div><span class="muted small">Usa ${tallaCm(p)} cm + ${MARGEN_NUDO} cm para amarres${usaBase(p) > 1 ? " × " + usaBase(p) : ""} = ${decTxt(nailonCollar(p))} m de nailon</span></div>` : ""}`; }).join("")}</div>
+  const optsDe = (ops, selId, usados) => ops.filter(m => m.id === selId || !usados.includes(m.id)).map(m => `<option value="${m.id}" ${m.id === selId ? "selected" : ""}>${esc(m.nombre)} · ${$u(unitario(m))}</option>`).join("");
+  const filaPieza = (cat, sel, ln, ops, usados, vacio) => { const usa = dec(ln.usa);
+    return `<div class="row" style="gap:6px"><select class="grow" data-pieza="${cat}" data-old="${sel.id}"><option value="">${vacio}</option>${optsDe(ops, sel.id, usados)}</select><span class="muted small">×</span><input class="usa-in" inputmode="decimal" aria-label="Cuántas usa de ${esc(sel.nombre)}" data-pzusa="${sel.id}" value="${esc(decTxt(usa))}"></div>
+      <span class="muted small">${esc(sel.nombre)}: ${unidadTxt(sel, usa)} · <b class="num" id="pzsub_${sel.id}">${$u(unitario(sel) * usa)}</b></span>
+      ${esLetras(sel) ? `<div class="palabras">${Array.from({ length: usaBase(p) }, (_, i) => `<input data-palabra="${i}" data-ins="${sel.id}" value="${esc((p.palabras || [])[i] || "")}" placeholder="${usaBase(p) > 1 ? "Palabra manilla " + (i + 1) : "Palabra"}" autocapitalize="characters" aria-label="Palabra ${i + 1}">`).join("")}<span class="muted small" id="pal_n">${p.palabras && p.palabras.some(Boolean) ? contarLetras(p.palabras) + " letras" : "Escribe la palabra y la app cuenta las letras"}</span></div>` : ""}`; };
+  box.innerHTML = `<div class="piezas">${piezasDe(p).map(([cat, lbl]) => { const ops = S.materia.filter(m => catDe(m) === cat).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+    const sels = links.map(l => ({ l, m: S.materia.find(m => m.id === l.id) })).filter(x => x.m && catDe(x.m) === cat), usados = sels.map(x => x.m.id), porDef = sels.some(x => x.l.defecto);
+    const opcional = /opcional/.test(lbl), vacio = opcional ? "No lleva" : "Escoge…", id = "pz_" + cat.replace(/ /g, "");
+    const libres = ops.filter(m => !usados.includes(m.id));
+    return `<div class="field pieza"><label for="${id}">${lbl}${porDef ? ' <span class="tag">por defecto</span>' : ""}</label>
+      ${sels.map(x => filaPieza(cat, x.m, x.l, ops, usados, sels.length > 1 ? "Quitar" : vacio)).join("")}
+      ${!sels.length ? `<select id="${id}" data-pieza="${cat}" data-old=""><option value="">${vacio}</option>${optsDe(ops, null, [])}</select>`
+        : libres.length ? `<select class="otro-sel" id="${id}" data-pieza="${cat}" data-old=""><option value="">+ Agregar otro de ${cat.toLowerCase()}</option>${optsDe(libres, null, [])}</select>` : ""}
+      ${!ops.length ? `<span class="muted small">No tienes insumos de ${cat.toLowerCase()} en Materia.</span>` : ""}</div>${cat === "Nailon" && esCollarT(p) ? `<div class="field"><span class="lbl">Talla del collar</span><div class="chips">${TALLAS.map(([n, cm]) => `<button class="chip" type="button" data-action="pp-talla" data-v="${n}" aria-pressed="${(p.talla || "Estándar") === n}">${n} · ${cm} cm</button>`).join("")}</div><span class="muted small">Usa ${tallaCm(p)} cm + ${MARGEN_NUDO} cm para amarres${usaBase(p) > 1 ? " × " + usaBase(p) : ""} = ${decTxt(nailonCollar(p))} m de nailon</span></div>` : ""}`; }).join("")}</div>
     ${manual ? `<p class="muted small" style="margin:0">Mientras no escojas, se usan los valores que tenía: ${n0(p.hilo) ? baseLbl(p).toLowerCase() + " " + $(p.hilo) : ""}${n0(p.hilo) && n0(p.dije) ? ", " : ""}${n0(p.dije) ? "dije " + $(p.dije) : ""}${n0(p.mostacillas) ? ", mostacillas " + $(p.mostacillas) : ""}${n0(p.compra) ? (n0(p.hilo) || n0(p.dije) ? ", " : "") + "otros " + $(p.compra) : ""}.</p>` : ""}`;
 }
 /* Letras: escribe la palabra de cada manilla y la app cuenta cuántas letras usa */
@@ -1521,9 +1532,11 @@ document.addEventListener("input", e => {
 document.addEventListener("change", e => {
   const t = e.target;
   if (t.dataset.change === "mes") { ui.ventasMes = t.value; render(); }
-  if (t.dataset.pieza && editing) { const cat = t.dataset.pieza;
-    editing.insumos = insLinks(editing).filter(l => { const m = S.materia.find(x => x.id === l.id); return !m || catDe(m) !== cat; });
-    if (t.value) editing.insumos.push({ id: +t.value, usa: cat === "Hilo" ? Math.round(1.3 * usaBase(editing) * 10) / 10 : usaBase(editing) }); drawProdIns(); return; }
+  if (t.dataset.pieza && editing) { const cat = t.dataset.pieza, old = +t.dataset.old || 0, base = BASES.includes(cat);
+    let ls = linksEf(editing).map(({ defecto, ...x }) => x);
+    const prev = old && ls.find(l => l.id === old); ls = ls.filter(l => l.id !== old);
+    if (t.value) { const usa = prev ? prev.usa : usaDefecto(cat, editing); ls.push({ id: +t.value, usa }); }
+    editing.insumos = ls; drawProdIns(); return; }
   if (t.dataset.ins === "sel" && editing && t.value) { editing.insumos = [...insLinks(editing), { id: +t.value, usa: 1 }]; drawProdIns(); return; }
   if (t.dataset.change === "invmes") { ui.invMes = t.value; render(); }
   if (t.dataset.iv && editingInv) editingInv[t.dataset.iv] = t.value;

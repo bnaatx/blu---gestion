@@ -342,3 +342,5 @@ nav.tabs svg{width:22px;height:22px}
 .palabras{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .palabras input{flex:1 1 140px;min-width:0;text-transform:uppercase}
 .palabras .muted{flex-basis:100%}
+.pieza .otro-sel{border-style:dashed;color:var(--pink);font-weight:600}
+.pieza{display:flex;flex-direction:column;gap:6px}
