@@ -121,7 +121,8 @@ function materialesDe(p) {
   Object.keys(r).forEach(k => r[k] = Math.round(r[k]));
   return r;
 }
-const costosDe = p => usaInsumos(p) ? materialesDe(p) : { hilo: n0(p.hilo), dije: n0(p.dije), mostacillas: n0(p.mostacillas), compra: n0(p.compra) };
+/* El costo arranca en 0: solo cuentan los materiales escogidos. En reventa sin insumo enlazado cuenta lo que pagó ("Lo compraste a"). */
+const costosDe = p => usaInsumos(p) ? materialesDe(p) : { hilo: 0, dije: 0, mostacillas: 0, compra: esHecho(p) ? n0(p.compra) : 0 };
 /* Empaque fijo: lo mismo para todos los productos. Si el producto tiene su propio empaque enlazado (ej. caja de anillos), ese reemplaza la caja. */
 const KIT_DEF = [
   { id: "caja", nombre: "Caja", precio: 1500, rinde: 1, caja: true },
@@ -155,11 +156,11 @@ const baseLbl = p => /manilla/i.test(p.tipo || "") ? "Hilo" : /anillo/i.test(p.t
 /* Reventa: lo compra ya hecho (ej. collares de SHEIN): no lleva mano de obra */
 const esHecho = p => !!p.hecho || insLinks(p).some(l => { const m = S.materia.find(x => x.id === l.id); return m && catDe(m) === "Reventa"; });
 /* Collares, cadenitas y pulseras artesanales: cadena + dije + porta dije, escogidos de la materia prima */
-const esCollar = p => /cadenit|collar|pulsera|manilla/i.test(p.tipo || "") && !esHecho(p);
+const esCollar = p => !esHecho(p);
 const usaBase = p => /trio/i.test(p.tipo || "") ? 3 : /pareja/i.test(p.tipo || "") ? 2 : 1;
 /* Piezas según el tipo + las categorías que ella crea (Cuentas, Fimo…). Las opcionales sin insumos no se muestran */
 const piezasDe = p => {
-  const base = /manilla/i.test(p.tipo || "") ? [["Hilo", "Hilo"], ["Dije", "Dije (opcional)"], ["Pasador", "Pasador (opcional)"], ["Mostacilla", "Mostacilla (opcional)"]] : [["Cadena", "Cadena"], ["Dije", "Dije"], ["Porta dije", "Porta dije (opcional)"], ["Pasador", "Pasador (opcional)"]];
+  const base = /anillo/i.test(p.tipo || "") ? [["Dije", "Dije (opcional)"], ["Pasador", "Pasador (opcional)"]] : /manilla/i.test(p.tipo || "") ? [["Hilo", "Hilo"], ["Dije", "Dije (opcional)"], ["Pasador", "Pasador (opcional)"], ["Mostacilla", "Mostacilla (opcional)"]] : [["Cadena", "Cadena"], ["Dije", "Dije"], ["Porta dije", "Porta dije (opcional)"], ["Pasador", "Pasador (opcional)"]];
   const extra = catsTodas().filter(c => !CAT_INS[c]).map(c => [c, c + " (opcional)"]);
   const hay = c => S.materia.some(m => catDe(m) === c), puesta = c => insLinks(p).some(l => { const m = S.materia.find(x => x.id === l.id); return m && catDe(m) === c; });
   return base.concat(extra).filter(([c, l]) => !/opcional/.test(l) || hay(c) || puesta(c));
@@ -167,7 +168,7 @@ const piezasDe = p => {
 function drawPiezas() {
   const box = $id("ppPiezas"); if (!box || !editing || window._noPz) return; const p = editing;
   if (!esCollar(p)) { box.innerHTML = ""; return; }
-  const links = insLinks(p), manual = !usaInsumos(p) && (n0(p.hilo) || n0(p.dije) || n0(p.mostacillas) || n0(p.compra));
+  const links = insLinks(p), manual = false;
   box.innerHTML = `<div class="piezas">${piezasDe(p).map(([cat, lbl]) => { const ops = S.materia.filter(m => catDe(m) === cat).sort((a, b) => a.nombre.localeCompare(b.nombre, "es")); const sel = links.map(l => S.materia.find(m => m.id === l.id)).find(m => m && catDe(m) === cat);
     const ln = sel && links.find(l => l.id === sel.id), usa = ln ? dec(ln.usa) : 0;
     return `<div class="field pieza"><label for="pz_${cat.replace(/ /g, "")}">${lbl}</label><div class="row" style="gap:6px"><select class="grow" id="pz_${cat.replace(/ /g, "")}" data-pieza="${cat}"><option value="">${/opcional/.test(lbl) ? "No lleva" : "Escoge…"}</option>${ops.map(m => `<option value="${m.id}" ${sel && sel.id === m.id ? "selected" : ""}>${esc(m.nombre)} · ${$u(unitario(m))}</option>`).join("")}</select>${sel ? `<span class="muted small">×</span><input class="usa-in" inputmode="decimal" aria-label="Cuántas usa de ${esc(sel.nombre)}" data-pzusa="${sel.id}" value="${esc(decTxt(usa))}">` : ""}</div>${sel ? `<span class="muted small">${unidadTxt(sel, usa)} · <b class="num" id="pzsub_${sel.id}">${$u(unitario(sel) * usa)}</b></span>` : ""}${!ops.length ? `<span class="muted small">No tienes insumos de ${cat.toLowerCase()} en Materia.</span>` : ""}</div>`; }).join("")}</div>
@@ -984,7 +985,7 @@ function drawProdIns() {
         <div class="row" style="gap:8px"><label class="small muted" for="usa_${m.id}">Usa</label><input id="usa_${m.id}" class="usa-in" inputmode="decimal" data-usa="${m.id}" value="${esc(decTxt(usa))}">
         <span class="small muted" id="uni_${m.id}">${unidadTxt(m, usa)}</span><b class="num" style="margin-left:auto" id="sub_${m.id}">${$u(unitario(m) * usa)}</b></div></div>`; }).join("")}</div>
       <p class="muted small" style="margin:0">El costo de materiales del producto se calcula con esta materia prima.</p>`
-    : `<p class="muted small" style="margin:0">Todavía no le has enlazado materia prima. Mientras tanto se usan los costos que escribiste arriba.</p>`}
+    : `<p class="muted small" style="margin:0">Todavía no le has puesto materia prima: el costo va solo con mano de obra y empaque.</p>`}
   ${grupos.length ? `<div class="field"><label for="ppInsSel">Agregar de tu materia prima</label><select id="ppInsSel" data-ins="sel"><option value="">Escoge un insumo…</option>${grupos.map(([c, l]) => `<optgroup label="${c || "Sin categoría"}">${l.map(m => `<option value="${m.id}">${esc(m.nombre)} · ${$u(unitario(m))} ${infoCat(m).c}</option>`).join("")}</optgroup>`).join("")}</select></div>` : ""}
   ${insForm ? `<div class="card" style="display:flex;flex-direction:column;gap:10px">
       <div class="field"><label for="inf_cat">Categoría</label><select id="inf_cat" data-inf="categoria">${opcionesCat(insForm.categoria)}</select></div>
