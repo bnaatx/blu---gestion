@@ -338,3 +338,4 @@ nav.tabs svg{width:22px;height:22px}
 .mat-chips{display:flex;flex-wrap:wrap;gap:8px}
 .solo-compu{display:none}
 @media (hover:hover) and (pointer:fine){.solo-compu{display:block}}
+.seg:has(> :nth-child(4)){grid-template-columns:repeat(4,minmax(0,1fr))}

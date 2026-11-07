@@ -105,7 +105,9 @@ const CATS = Object.keys(CAT_INS);
 const catDe = m => (m && m.categoria) || "";
 /* Categorías fijas + las que ella cree (salen de "Otro"), con "Otro" de última */
 const catsTodas = () => { const extra = [...new Set(S.materia.map(m => m.categoria).filter(c => c && !CAT_INS[c]))].sort((a, b) => a.localeCompare(b, "es")); return [...CATS.filter(c => c !== "Otro"), ...extra, "Otro"]; };
-const infoCat = m => CAT_INS[catDe(m)] || CAT_INS.Otro;
+const POR_GRAMO = { u: "gramo", pl: "gramos", c: "por gramo", doc: true };
+/* Si lo compró por gramos y no sabe cuántas trae por gramo, se cuenta en gramos */
+const infoCat = m => { const ic = CAT_INS[catDe(m)] || CAT_INS.Otro; return ic.doc && m && m.presentacion === "gramos" && !dec(m.porGramo) ? POR_GRAMO : ic; };
 /* números con decimales: "0,5" "1.5" "1.000" */
 const dec = v => { const s = String(v ?? "").trim().replace(/\s/g, "").replace(/\.(?=\d{3}(?:\D|$))/g, "").replace(",", "."); const n = parseFloat(s); return isFinite(n) && n > 0 ? n : 0; };
 const decTxt = n => n ? String(Math.round(n * 1000) / 1000).replace(".", ",") : "";
@@ -577,7 +579,7 @@ function vMateria() {
   if (ui.matCat != null && !todosG.some(([c]) => c === ui.matCat)) ui.matCat = null;
   const grupos = ui.matCat == null ? todosG : todosG.filter(([c]) => c === ui.matCat);
   const chips = `<div class="chips mat-chips"><button class="chip" type="button" data-action="mat-cat" data-v="*" aria-pressed="${ui.matCat == null}">Todos</button>${todosG.map(([c, l]) => `<button class="chip" type="button" data-action="mat-cat" data-v="${esc(c)}" aria-pressed="${ui.matCat === c}">${c || "Sin categoría"} (${l.length})</button>`).join("")}</div>`;
-  const fila = m => { const url = safeUrl(m.link), ic = infoCat(m), cant = dec(m.cantidadIngresada) || dec(m.cantidad), pres = m.presentacion === "docenas" ? (cant === 1 ? "docena" : "docenas") : m.presentacion === "tiras" ? (cant === 1 ? "tira" : "tiras") + " de " + decTxt(dec(m.porTira)) : (cant === 1 ? ic.u : ic.pl), s = buscaEn(m.nombre + " " + provNombre(m) + " " + catDe(m));
+  const fila = m => { const url = safeUrl(m.link), ic = infoCat(m), cant = dec(m.cantidadIngresada) || dec(m.cantidad), pres = m.presentacion === "docenas" ? (cant === 1 ? "docena" : "docenas") : m.presentacion === "tiras" ? (cant === 1 ? "tira" : "tiras") + " de " + decTxt(dec(m.porTira)) : m.presentacion === "gramos" ? (cant === 1 ? "gramo" : "gramos") : (cant === 1 ? ic.u : ic.pl), s = buscaEn(m.nombre + " " + provNombre(m) + " " + catDe(m));
     return `<div class="prow tappable" data-action="edit-mat" data-id="${m.id}" role="button" tabindex="0" data-s="${esc(s)}"${q && !s.includes(q) ? " hidden" : ""}>
     ${insThumb(m)}<div class="grow"><div class="name">${esc(m.nombre)}</div><div class="muted small">${logo(provDe(m) || { nombre: provNombre(m) }, "xs")} ${esc(provNombre(m))} · ${decTxt(cant)} ${pres} por ${$(m.precio)} · <b class="num">${$u(unitario(m))}</b> ${ic.c}</div></div>
     ${url ? `<a class="buy" href="${esc(url)}" target="_blank" rel="noopener">Comprar</a>` : ""}</div>`; };
@@ -960,18 +962,19 @@ function lugarDeLink(u) {
 let insForm = null;
 const opcionesCat = sel => `<option value="">Sin categoría</option>` + catsTodas().map(c => `<option ${c === sel ? "selected" : ""}>${c}</option>`).join("");
 function camposCompra(f, pre) {
-  const ic = CAT_INS[f.categoria] || CAT_INS.Otro, base = baseCantidad(f), tiras = ic.doc && f.presentacion === "tiras";
+  const icc = CAT_INS[f.categoria] || CAT_INS.Otro, ic = infoCat(f), base = baseCantidad(f), tiras = icc.doc && f.presentacion === "tiras", gramos = icc.doc && f.presentacion === "gramos";
   const pu = base ? num(f.precio) / base : 0;
-  return `<div class="grid2"><div class="field"><label for="${pre}_cant">${tiras ? "Tiras o paquetes comprados" : "Cantidad comprada"}</label><input id="${pre}_cant" inputmode="decimal" data-${pre}="cantidadIngresada" value="${esc(decTxt(dec(f.cantidadIngresada)))}" placeholder="Ej: 50"></div>
+  return `<div class="grid2"><div class="field"><label for="${pre}_cant">${tiras ? "Tiras o paquetes comprados" : gramos ? "Gramos comprados" : "Cantidad comprada"}</label><input id="${pre}_cant" inputmode="decimal" data-${pre}="cantidadIngresada" value="${esc(decTxt(dec(f.cantidadIngresada)))}" placeholder="Ej: 50"></div>
     <div class="field"><label for="${pre}_precio">Precio total</label><input id="${pre}_precio" inputmode="numeric" class="money-in" data-${pre}="precio" value="${miles(f.precio)}" placeholder="0"></div></div>
-    ${ic.doc ? `<div class="seg" role="group" aria-label="Viene por"><button type="button" data-action="${pre}-pres" data-v="unidades" aria-pressed="${f.presentacion !== "docenas"}">Unidades</button><button type="button" data-action="${pre}-pres" data-v="docenas" aria-pressed="${f.presentacion === "docenas"}">Docenas</button><button type="button" data-action="${pre}-pres" data-v="tiras" aria-pressed="${tiras}">Tiras</button></div>
+    ${icc.doc ? `<div class="seg" role="group" aria-label="Viene por"><button type="button" data-action="${pre}-pres" data-v="unidades" aria-pressed="${!["docenas", "tiras", "gramos"].includes(f.presentacion)}">Unidades</button><button type="button" data-action="${pre}-pres" data-v="docenas" aria-pressed="${f.presentacion === "docenas"}">Docenas</button><button type="button" data-action="${pre}-pres" data-v="tiras" aria-pressed="${tiras}">Tiras</button><button type="button" data-action="${pre}-pres" data-v="gramos" aria-pressed="${gramos}">Gramos</button></div>
+      ${gramos ? `<div class="field"><label for="${pre}_pgr">¿Cuántas trae por gramo? (opcional)</label><input id="${pre}_pgr" inputmode="decimal" data-${pre}="porGramo" value="${esc(f.porGramo || "")}" placeholder="Ej: 10"></div><p class="muted small" style="margin:-6px 0 0">Si lo llenas, en el producto pones cuántas piezas usa. Si no, pones cuántos gramos usa.</p>` : ""}
       ${tiras ? `<div class="field"><label for="${pre}_ptira">¿Cuántas trae cada tira?</label><input id="${pre}_ptira" inputmode="numeric" data-${pre}="porTira" value="${esc(f.porTira || "")}" placeholder="Ej: 40 perlas"></div><p class="muted small" style="margin:-6px 0 0">En el producto pones cuántas usa (ej. 12 perlas) y la app saca el precio.</p>` : ""}`
       : `<p class="muted small" style="margin:0">Escribe la cantidad en ${ic.pl}.</p>`}
     ${f.categoria === "Mostacilla" ? `<div class="field"><label for="${pre}_cpg">Cuentas por gramo (opcional)</label><input id="${pre}_cpg" inputmode="numeric" data-${pre}="cuentasPorGramo" value="${f.cuentasPorGramo || ""}" placeholder="Cuenta las que caben en 1 gramo"></div>` : ""}
     <div class="totals"><div class="t"><span>Te sale a</span><span id="${pre}_pu">${pu ? $u(pu) + " " + ic.c : "—"}</span></div></div>`;
 }
-const baseCantidad = f => { const doc = (CAT_INS[f.categoria] || CAT_INS.Otro).doc; return (doc && f.presentacion === "docenas" ? 12 : doc && f.presentacion === "tiras" ? dec(f.porTira) : 1) * dec(f.cantidadIngresada); };
-function refrescarPU(f, pre) { const el = $id(pre + "_pu"); if (!el) return; const ic = CAT_INS[f.categoria] || CAT_INS.Otro, b = baseCantidad(f); el.textContent = b && num(f.precio) ? $u(num(f.precio) / b) + " " + ic.c : "—"; }
+const baseCantidad = f => { const doc = (CAT_INS[f.categoria] || CAT_INS.Otro).doc; return (doc && f.presentacion === "docenas" ? 12 : doc && f.presentacion === "tiras" ? dec(f.porTira) : doc && f.presentacion === "gramos" ? (dec(f.porGramo) || 1) : 1) * dec(f.cantidadIngresada); };
+function refrescarPU(f, pre) { const el = $id(pre + "_pu"); if (!el) return; const ic = infoCat(f), b = baseCantidad(f); el.textContent = b && num(f.precio) ? $u(num(f.precio) / b) + " " + ic.c : "—"; }
 function drawProdIns() {
   const box = $id("ppIns"); if (!box || !editing) return;
   const links = insLinks(editing), usados = links.map(l => l.id);
@@ -1380,7 +1383,7 @@ document.addEventListener("click", e => {
     case "ins-quitar": editing.insumos = insLinks(editing).filter(l => l.id !== +t.dataset.id); drawProdIns(); break;
     case "ins-crear": { const f = insForm; if (!f.nombre.trim()) { toast("Ponle nombre al insumo"); return; }
       if (!baseCantidad(f) || !num(f.precio)) { toast("Escribe la cantidad y el precio que pagaste"); return; }
-      const m = { id: Math.max(0, ...S.materia.map(x => x.id)) + 1, nombre: f.nombre.trim(), categoria: f.categoria, proveedorId: +f.proveedorId || undefined, lugar: (+f.proveedorId ? (S.proveedores.find(v => v.id === +f.proveedorId) || {}).nombre : (f.lugar || lugarDeLink(f.link) || "")).trim(), cantidad: baseCantidad(f), cantidadIngresada: dec(f.cantidadIngresada), presentacion: f.presentacion, precio: num(f.precio), link: f.link.trim(), cuentasPorGramo: num(f.cuentasPorGramo) || undefined, porTira: f.presentacion === "tiras" ? dec(f.porTira) : undefined };
+      const m = { id: Math.max(0, ...S.materia.map(x => x.id)) + 1, nombre: f.nombre.trim(), categoria: f.categoria, proveedorId: +f.proveedorId || undefined, lugar: (+f.proveedorId ? (S.proveedores.find(v => v.id === +f.proveedorId) || {}).nombre : (f.lugar || lugarDeLink(f.link) || "")).trim(), cantidad: baseCantidad(f), cantidadIngresada: dec(f.cantidadIngresada), presentacion: f.presentacion, precio: num(f.precio), link: f.link.trim(), cuentasPorGramo: num(f.cuentasPorGramo) || undefined, porTira: f.presentacion === "tiras" ? dec(f.porTira) : undefined, porGramo: f.presentacion === "gramos" ? dec(f.porGramo) || undefined : undefined };
       S.materia.push(m); guardar("materia", m); editing.insumos = [...insLinks(editing), { id: m.id, usa: 1 }]; insForm = null; drawProdIns(); toast(m.nombre + " quedó en Materia prima"); break; }
     case "ver-prod": verProd(+t.dataset.c); break;
     case "stock-det": { const p = prodC(); p.stock = Math.max(0, p.stock + (+t.dataset.d)); guardar("productos", p); render(); verProd(p.codigo); break; }
@@ -1418,7 +1421,7 @@ document.addEventListener("click", e => {
       if (m.nuevaCat && m.nuevaCat.trim()) { const nc = m.nuevaCat.trim(), cap = nc.charAt(0).toUpperCase() + nc.slice(1), ya = catsTodas().find(c => c.toLowerCase() === cap.toLowerCase()); m.categoria = ya || cap; } delete m.nuevaCat;
       m.link = extraerUrl(m.link);
       if (+m.proveedorId) { m.proveedorId = +m.proveedorId; m.lugar = (S.proveedores.find(v => v.id === m.proveedorId) || {}).nombre || m.lugar; } else delete m.proveedorId;
-      m.cantidadIngresada = dec(m.cantidadIngresada); m.cantidad = baseCantidad(m) || m.cantidad; m.precio = num(m.precio); if (m.cuentasPorGramo) m.cuentasPorGramo = num(m.cuentasPorGramo); if (m.porTira) m.porTira = dec(m.porTira);
+      m.cantidadIngresada = dec(m.cantidadIngresada); m.cantidad = baseCantidad(m) || m.cantidad; m.precio = num(m.precio); if (m.cuentasPorGramo) m.cuentasPorGramo = num(m.cuentasPorGramo); if (m.porTira) m.porTira = dec(m.porTira); if (m.presentacion === "gramos") m.porGramo = dec(m.porGramo) || undefined; else delete m.porGramo;
       const i = S.materia.findIndex(x => x.id === m.id); if (i >= 0) S.materia[i] = m; else S.materia.push(m); guardar("materia", m); closeSheet(); render(); toast("Guardado"); break; }
     case "new-content": editContent(null); break;
     case "edit-content": editContent(t.dataset.id); break;
