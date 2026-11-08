@@ -124,7 +124,7 @@ const MARGEN_NUDO = 10;
 const esCollarT = p => /collar/i.test(p.tipo || "");
 const tallaCm = p => (TALLAS.find(([n]) => n === p.talla) || TALLAS[0])[1];
 const nailonCollar = p => Math.round((tallaCm(p) + MARGEN_NUDO) / 100 * usaBase(p) * 100) / 100;
-const usaDefecto = (cat, p) => cat === "Hilo" ? Math.round(1.3 * usaBase(p) * 10) / 10 : cat === "Nailon" && esCollarT(p) ? nailonCollar(p) : usaBase(p);
+const usaDefecto = (cat, p) => cat === "Reventa" || cat === "Empaque" ? 1 : cat === "Hilo" ? Math.round(1.3 * usaBase(p) * 10) / 10 : cat === "Nailon" && esCollarT(p) ? nailonCollar(p) : usaBase(p);
 function linksEf(p) {
   const l = insLinks(p), cat = !esHecho(p) && baseCat(p); if (!cat) return l;
   if (l.some(x => { const m = S.materia.find(y => y.id === x.id); return m && catDe(m) === cat; })) return l;
@@ -140,7 +140,8 @@ function materialesDe(p) {
   return r;
 }
 /* El costo arranca en 0: solo cuentan los materiales escogidos. En reventa sin insumo enlazado cuenta lo que pagó ("Lo compraste a"). */
-const costosDe = p => usaInsumos(p) ? materialesDe(p) : { hilo: 0, dije: 0, mostacillas: 0, compra: esHecho(p) ? n0(p.compra) : 0 };
+const tieneReventa = p => insLinks(p).some(l => { const m = S.materia.find(x => x.id === l.id); return m && catDe(m) === "Reventa"; });
+const costosDe = p => { const r = usaInsumos(p) ? materialesDe(p) : { hilo: 0, dije: 0, mostacillas: 0, compra: 0 }; if (esHecho(p) && !tieneReventa(p)) r.compra += n0(p.compra); return r; };
 /* Empaque fijo: lo mismo para todos los productos. Si el producto tiene su propio empaque enlazado (ej. caja de anillos), ese reemplaza la caja. */
 const KIT_DEF = [
   { id: "caja", nombre: "Caja", precio: 1500, rinde: 1, caja: true },
@@ -180,6 +181,7 @@ const esCollar = p => !esHecho(p);
 const usaBase = p => /trio/i.test(p.tipo || "") ? 3 : /pareja/i.test(p.tipo || "") ? 2 : 1;
 /* Piezas según el tipo + las categorías que ella crea (Cuentas, Fimo…). Las opcionales sin insumos no se muestran */
 const piezasDe = p => {
+  if (esHecho(p)) return [["Reventa", "Lo que compraste (Reventa)"], ["Empaque", "Empaque propio (opcional)"]];
   const b = baseCat(p);
   const base = b === "Hilo" ? [["Hilo", "Hilo"], ["Dije", "Dije (opcional)"], ["Pasador", "Pasador (opcional)"], ["Mostacilla", "Mostacilla (opcional)"]]
     : b === "Nailon" ? [["Nailon", "Nailon"], ["Dije", "Dije (opcional)"], ["Porta dije", "Porta dije (opcional)"], ["Mostacilla", "Mostacilla (opcional)"], ["Pasador", "Pasador (opcional)"]]
@@ -191,7 +193,6 @@ const piezasDe = p => {
 };
 function drawPiezas() {
   const box = $id("ppPiezas"); if (!box || !editing || window._noPz) return; const p = editing;
-  if (!esCollar(p)) { box.innerHTML = ""; return; }
   const links = linksEf(p), manual = false;
   const optsDe = (ops, selId, usados) => ops.filter(m => m.id === selId || !usados.includes(m.id)).map(m => `<option value="${m.id}" ${m.id === selId ? "selected" : ""}>${esc(m.nombre)} · ${$u(unitario(m))}</option>`).join("");
   const filaPieza = (cat, sel, ln, ops, usados, vacio) => { const usa = dec(ln.usa);
@@ -1152,7 +1153,7 @@ function drawProdFoto() {
 function drawProdTot() {
   const p = editing, c = costoProd(p), el = $id("ppTot"); if (!el) return;
   const hecho = esHecho(p), lh = $id("lbl_hilo"), lc = $id("lbl_compra"), g = $id("ppCostos");
-  if (lh) lh.textContent = baseLbl(p); if (lc) lc.textContent = hecho ? "Lo compraste a" : "Compra"; if (g) { g.classList.toggle("es-hecho", hecho); const col = esCollar(p), kind = col ? (p.tipo || "") : ""; g.classList.toggle("es-collar", col); if (g.dataset.pz !== kind) { g.dataset.pz = kind; drawPiezas(); } }
+  if (lh) lh.textContent = baseLbl(p); if (lc) lc.textContent = hecho ? "Lo compraste a" : "Compra"; if (g) { g.classList.toggle("es-hecho", hecho); const col = esCollar(p), kind = (col ? "A" : "R") + (p.tipo || ""); g.classList.toggle("es-collar", col || tieneReventa(p)); if (g.dataset.pz !== kind) { g.dataset.pz = kind; drawPiezas(); } }
   document.querySelectorAll("#ppHecho button").forEach(b => b.setAttribute("aria-pressed", String((b.dataset.v === "1") === hecho)));
   el.innerHTML = `<div><span>Costo de fabricación</span><span>${$(c)}</span></div>
     <div style="color:${p.mayor - c < 0 ? "var(--loss)" : "inherit"}"><span>Ganancia por mayor</span><span>${$(p.mayor - c)}</span></div>
