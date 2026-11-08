@@ -213,6 +213,19 @@ function drawPiezas() {
 /* Letras: escribe la palabra de cada manilla y la app cuenta cuántas letras usa */
 const esLetras = m => /letra/i.test(m.nombre || "");
 const contarLetras = ws => (ws || []).join("").replace(/[^\p{L}\p{N}]/gu, "").length;
+/* Materia prima en casa: cuánto le queda de cada insumo y si alcanza para armar un producto agotado */
+const tieneCasa = m => m && m.enCasa !== undefined && m.enCasa !== null && m.enCasa !== "";
+const casaTxt = m => decTxt(Math.round(dec(m.enCasa) * 100) / 100) + " " + (dec(m.enCasa) === 1 ? infoCat(m).u : infoCat(m).pl);
+function puedeHacer(p, n = 1) {
+  const ls = linksEf(p).map(l => ({ l, m: S.materia.find(x => x.id === l.id) })).filter(x => x.m);
+  if (!ls.length) return null;
+  const faltan = ls.filter(x => tieneCasa(x.m) && dec(x.m.enCasa) < dec(x.l.usa) * n).map(x => x.m.nombre);
+  const sinDato = ls.filter(x => !tieneCasa(x.m)).map(x => x.m.nombre);
+  return { ok: !faltan.length && !sinDato.length, faltan, sinDato };
+}
+function gastarMateria(p, n) { if (n <= 0) return;
+  linksEf(p).forEach(l => { const m = S.materia.find(x => x.id === l.id); if (!tieneCasa(m)) return; m.enCasa = Math.max(0, Math.round((dec(m.enCasa) - dec(l.usa) * n) * 100) / 100); guardar("materia", m); }); }
+const tagHacer = p => { const r = puedeHacer(p); if (!r) return ""; if (r.ok) return '<span class="tag ok">Se puede hacer</span>'; if (r.faltan.length) return `<span class="tag loss">Falta ${esc(r.faltan.slice(0, 2).join(", "))}${r.faltan.length > 2 ? "…" : ""}</span>`; return ""; };
 const manoDe = p => esHecho(p) ? 0 : n0(p.manoObra);
 const activos = () => S.productos.filter(p => remo(p) !== "archivado");
 
@@ -510,7 +523,7 @@ function vStock() {
   <div class="scroller"><button class="chip" type="button" data-action="stock-tipo" data-v="" aria-pressed="${!ui.stockTipo}">Todos</button>${TIPOS.map(t => `<button class="chip" type="button" data-action="stock-tipo" data-v="${t}" aria-pressed="${ui.stockTipo === t}">${t}</button>`).join("")}</div>
   <p class="muted small" style="margin:0">${unid} unidades en stock · <span id="cuentaQ">${lista.filter(p => !q || buscaEn(p.nombre + " " + p.tipo).includes(q)).length}</span> productos</p>
   <section class="card" style="padding-block:4px">${lista.map(p => `<div class="prow tappable" data-action="ver-prod" data-c="${p.codigo}" role="button" tabindex="0" data-s="${esc(buscaEn(p.nombre + " " + p.tipo))}"${q && !buscaEn(p.nombre + " " + p.tipo).includes(q) ? " hidden" : ""}>
-    ${thumb(p)}<div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)}${p.stock <= 0 ? " · Agotado" : ""}</div>${enRemate(p) ? `<span class="tag remate">Remate ${$(p.precioRemate)}</span>` : ""}</div>
+    ${thumb(p)}<div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)}${p.stock <= 0 ? " · Agotado" : ""}</div>${p.stock <= 0 ? tagHacer(p) : ""}${enRemate(p) ? `<span class="tag remate">Remate ${$(p.precioRemate)}</span>` : ""}</div>
     <div class="stepper"><button class="icon-btn" type="button" data-action="stock" data-c="${p.codigo}" data-d="-1" aria-label="Restar uno a ${esc(p.nombre)}">−</button>
     <b class="${p.stock <= 0 ? "zero" : ""}">${p.stock}</b>
     <button class="icon-btn" type="button" data-action="stock" data-c="${p.codigo}" data-d="1" aria-label="Sumar uno a ${esc(p.nombre)}">+</button></div></div>`).join("") || '<div class="empty">No hay productos con ese filtro</div>'}</section>`;
@@ -623,7 +636,7 @@ function vMateria() {
   const chips = `<div class="chips mat-chips"><button class="chip" type="button" data-action="mat-cat" data-v="*" aria-pressed="${ui.matCat == null}">Todos</button>${todosG.map(([c, l]) => `<button class="chip" type="button" data-action="mat-cat" data-v="${esc(c)}" aria-pressed="${ui.matCat === c}">${c || "Sin categoría"} (${l.length})</button>`).join("")}</div>`;
   const fila = m => { const url = safeUrl(m.link), ic = infoCat(m), cant = dec(m.cantidadIngresada) || dec(m.cantidad), pres = m.presentacion === "docenas" ? (cant === 1 ? "docena" : "docenas") : m.presentacion === "tiras" ? (cant === 1 ? "tira" : "tiras") + " de " + decTxt(dec(m.porTira)) : m.presentacion === "gramos" ? (cant === 1 ? "gramo" : "gramos") : (cant === 1 ? ic.u : ic.pl), s = buscaEn(m.nombre + " " + provNombre(m) + " " + catDe(m));
     return `<div class="prow tappable" data-action="edit-mat" data-id="${m.id}" role="button" tabindex="0" data-s="${esc(s)}"${q && !s.includes(q) ? " hidden" : ""}>
-    ${insThumb(m)}<div class="grow"><div class="name">${esc(m.nombre)}</div><div class="muted small">${logo(provDe(m) || { nombre: provNombre(m) }, "xs")} ${esc(provNombre(m))} · ${decTxt(cant)} ${pres} por ${$(m.precio)} · <b class="num">${$u(unitario(m))}</b> ${ic.c}</div></div>
+    ${insThumb(m)}<div class="grow"><div class="name">${esc(m.nombre)}</div><div class="muted small">${logo(provDe(m) || { nombre: provNombre(m) }, "xs")} ${esc(provNombre(m))} · ${decTxt(cant)} ${pres} por ${$(m.precio)} · <b class="num">${$u(unitario(m))}</b> ${ic.c}</div>${tieneCasa(m) ? `<span class="tag ${dec(m.enCasa) > 0 ? "" : "loss"}">En casa: ${casaTxt(m)}</span>` : ""}${(m.colores || []).length ? ` <span class="tag">${m.colores.length} colores</span>` : ""}</div>
     ${url ? `<a class="buy" href="${esc(url)}" target="_blank" rel="noopener">Comprar</a>` : ""}</div>`; };
   setTimeout(traerFotos, 400);
   return `${tabs}<div class="row"><input class="search grow" id="matQ" data-input="matQ" placeholder="Buscar insumo o proveedor" value="${esc(ui.matQ)}" aria-label="Buscar insumo"><button class="btn" type="button" data-action="new-mat">+ Insumo</button></div>
@@ -952,7 +965,7 @@ function saveOrder() {
   if (!d.lineas.length) miss.push("al menos un producto");
   if (miss.length) { err.hidden = false; err.textContent = "Falta " + miss.join(" y ") + "."; return; }
   const agotados = [];
-  d.lineas.forEach(l => { const p = S.productos.find(x => x.codigo === l.codigo); if (p) { p.stock -= l.cantidad; if (remo(p) === "remate" && p.stock <= 0) { p.remodelacion = "archivado"; agotados.push(p.nombre); } guardar("productos", p); } });
+  d.lineas.forEach(l => { const p = S.productos.find(x => x.codigo === l.codigo); if (p) { gastarMateria(p, Math.min(l.cantidad, l.cantidad - Math.max(0, p.stock))); p.stock -= l.cantidad; if (remo(p) === "remate" && p.stock <= 0) { p.remodelacion = "archivado"; agotados.push(p.nombre); } guardar("productos", p); } });
   if (agotados.length) setTimeout(() => toast("Se vendió el remate de " + agotados.join(", ") + " · quedó archivado"), 2900);
   const ped = { ...d, id: "p" + Date.now(), n: nextN(), envio: +d.envio || 0, envioPaga: undefined, pagado: d.pago === "pagado", abono: d.pago === "abono" ? (+d.abono || 0) : 0 }; delete ped.q; delete ped.pegado; delete ped.envioAuto; delete ped.envioPaga;
   S.pedidos.push(ped); guardar("pedidos", ped); closeSheet(); ui.pedFiltro = "activos"; go("pedidos"); toast("Pedido #" + ped.n + " guardado · stock descontado");
@@ -1101,6 +1114,11 @@ function verProd(codigo) {
       <div><h3>Stock</h3><span class="muted small">${p.stock <= 0 ? "Agotado" : p.stock === 1 ? "Queda 1" : "Disponibles"}</span></div>
       <div class="stepper"><button class="icon-btn" type="button" data-action="stock-det" data-c="${p.codigo}" data-d="-1" aria-label="Restar uno">−</button><b class="${p.stock <= 0 ? "zero" : ""}" style="font-size:22px">${p.stock}</b><button class="icon-btn" type="button" data-action="stock-det" data-c="${p.codigo}" data-d="1" aria-label="Sumar uno">+</button></div>
     </section>
+    ${(() => { const r = puedeHacer(p); if (!r) return ""; const ls = linksEf(p).map(l => ({ l, m: S.materia.find(x => x.id === l.id) })).filter(x => x.m);
+      return `<section class="card"><div class="row between" style="gap:8px"><h3>Materia prima en casa</h3>${r.ok ? '<span class="tag ok">Se puede hacer</span>' : r.faltan.length ? '<span class="tag loss">Falta material</span>' : '<span class="tag">Sin registrar</span>'}</div>
+      ${ls.map(({ l, m }) => { const ok = tieneCasa(m) && dec(m.enCasa) >= dec(l.usa); return `<div class="row between small" style="gap:8px"><span>${esc(m.nombre)} <span class="muted">(usa ${decTxt(dec(l.usa))})</span></span><span class="${tieneCasa(m) ? (ok ? "" : "loss-txt") : "muted"}">${tieneCasa(m) ? "Tienes " + casaTxt(m) : "Sin registrar"}</span></div>`; }).join("")}
+      ${r.sinDato.length ? `<p class="muted small" style="margin:0">Pon cuánto tienes en casa de cada insumo en Materia para saber si alcanza.</p>` : ""}
+      <button class="btn block line" type="button" data-action="arme" data-c="${p.codigo}">Armé 1 · suma al stock</button></section>`; })()}
     <div class="totals">
       <div><span>Precio detal</span><b>${$(p.menor)}</b></div>
       <div><span>Precio por mayor</span><b>${$(p.mayor)}</b></div>
@@ -1183,6 +1201,9 @@ function drawMatForm(focusId) {
     ${selectProv(m.proveedorId, "mm")}
     ${m.proveedorId === "otro" || (!m.proveedorId && m.lugar && !S.proveedores.length) ? `<div class="field"><label for="mm_lugar">¿Dónde lo compras?</label><input id="mm_lugar" data-mm="lugar" value="${esc(m.lugar)}"></div>` : ""}
     ${camposCompra(m, "mm")}
+    <div class="field"><label for="mm_casa">¿Cuánto tienes en casa?</label><div class="row" style="gap:8px"><input id="mm_casa" inputmode="decimal" data-mm="enCasa" value="${tieneCasa(m) ? esc(decTxt(dec(m.enCasa))) : ""}" placeholder="Ej: 15"><span class="muted small" id="mm_casa_u">${infoCat(m).pl}</span></div><span class="muted small">Se descuenta sola cuando armas un producto agotado o vendes uno que tocó hacer.</span></div>
+    ${catDe(m) === "Hilo" || catDe(m) === "Nailon" ? `<div class="field"><span class="lbl">Colores que tienes</span><div class="chips" id="mm_colores">${(m.colores || []).map((c, i) => `<span class="chip color-chip">${esc(c)}<button type="button" data-action="mm-color-del" data-i="${i}" aria-label="Quitar ${esc(c)}">×</button></span>`).join("") || '<span class="muted small">Todavía no has puesto colores</span>'}</div>
+      <div class="row" style="gap:8px"><input id="mm_color" placeholder="Ej: Rosado pastel" aria-label="Nuevo color"><button class="btn sm" type="button" data-action="mm-color-add">Agregar</button></div></div>` : ""}
     ${url ? `<a class="buy" style="align-self:flex-start" href="${esc(url)}" target="_blank" rel="noopener">Abrir link de compra</a>` : ""}
     ${usan.length ? `<p class="muted small" style="margin:0">Lo usan ${usan.length} producto${usan.length > 1 ? "s" : ""}: ${usan.slice(0, 6).map(p => esc(p.nombre)).join(", ")}${usan.length > 6 ? "…" : ""}. Si cambias el precio, su costo se actualiza solo.</p>` : ""}
     <button class="btn block" type="button" data-action="save-mat">Guardar</button>`;
@@ -1431,6 +1452,7 @@ document.addEventListener("click", e => {
       const m = { id: Math.max(0, ...S.materia.map(x => x.id)) + 1, nombre: f.nombre.trim(), categoria: f.categoria, proveedorId: +f.proveedorId || undefined, lugar: (+f.proveedorId ? (S.proveedores.find(v => v.id === +f.proveedorId) || {}).nombre : (f.lugar || lugarDeLink(f.link) || "")).trim(), cantidad: baseCantidad(f), cantidadIngresada: dec(f.cantidadIngresada), presentacion: f.presentacion, precio: num(f.precio), link: f.link.trim(), cuentasPorGramo: num(f.cuentasPorGramo) || undefined, porTira: f.presentacion === "tiras" ? dec(f.porTira) : undefined, porGramo: f.presentacion === "gramos" ? dec(f.porGramo) || undefined : undefined };
       S.materia.push(m); guardar("materia", m); editing.insumos = [...insLinks(editing), { id: m.id, usa: 1 }]; insForm = null; drawProdIns(); toast(m.nombre + " quedó en Materia prima"); break; }
     case "ver-prod": verProd(+t.dataset.c); break;
+    case "arme": { const p = prodC(); p.stock = Math.max(0, p.stock) + 1; gastarMateria(p, 1); guardar("productos", p); render(); verProd(p.codigo); toast("Listo: +1 en stock y se descontó la materia prima"); break; }
     case "stock-det": { const p = prodC(); p.stock = Math.max(0, p.stock + (+t.dataset.d)); guardar("productos", p); render(); verProd(p.codigo); break; }
     case "new-prod": editProd(null); break;
     case "quitar-foto": { const p = editing, vieja = p.foto; p.foto = ""; const real = S.productos.find(x => x.codigo === p.codigo);
@@ -1460,6 +1482,8 @@ document.addEventListener("click", e => {
       S.materia.filter(m => m.proveedorId === v.id && m.lugar !== v.nombre).forEach(m => { m.lugar = v.nombre; guardar("materia", m); });
       guardar("proveedores", v); closeSheet(); ui.matSeg = "proveedores"; if (tab !== "materia") go("materia"); else render(); toast("Proveedor guardado"); break; }
     case "copiar": { const txt = v; (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast("Copiado"), () => toast(txt)); break; }
+    case "mm-color-add": { const el = $id("mm_color"), c = el && el.value.trim(); if (!c) { toast("Escribe el color"); break; } editingMat.colores = [...(editingMat.colores || []), c.charAt(0).toUpperCase() + c.slice(1)]; drawMatForm("mm_color"); break; }
+    case "mm-color-del": editingMat.colores = (editingMat.colores || []).filter((_, i) => i !== +t.dataset.i); drawMatForm(); break;
     case "mm-cat": editingMat.categoria = editingMat.categoria === v ? "" : v; drawMatForm(v === "Otro" && editingMat.categoria === "Otro" ? "mm_nuevacat" : undefined); break;
     case "mm-traer": { const m = editingMat; toast("Buscando la foto…"); fotoDeLink(m.link).then(img => { if (editingMat !== m) return; if (img) { m.foto = img; m.fotoIntento = m.link; const b = $id("mmFoto"); if (b) b.innerHTML = fotoInsBox(m); toast("Foto lista. Dale Guardar"); } else toast(img === null ? "No se pudo conectar. Intenta otra vez" : "Esa página no deja sacar la foto. Súbela tú"); }); break; }
     case "mm-quitar-foto": { const m = editingMat; m.foto = ""; m.fotoIntento = m.link; const b = $id("mmFoto"); if (b) b.innerHTML = fotoInsBox(m); break; }
@@ -1468,6 +1492,7 @@ document.addEventListener("click", e => {
       m.link = extraerUrl(m.link);
       if (m.predeterminado && BASES.includes(m.categoria)) S.materia.filter(x => x.id !== m.id && x.predeterminado && catDe(x) === m.categoria).forEach(x => { x.predeterminado = false; guardar("materia", x); }); else if (!BASES.includes(m.categoria)) delete m.predeterminado;
       if (+m.proveedorId) { m.proveedorId = +m.proveedorId; m.lugar = (S.proveedores.find(v => v.id === m.proveedorId) || {}).nombre || m.lugar; } else delete m.proveedorId;
+      if (m.enCasa === "" || m.enCasa == null) delete m.enCasa; else m.enCasa = dec(m.enCasa);
       m.cantidadIngresada = dec(m.cantidadIngresada); m.cantidad = baseCantidad(m) || m.cantidad; m.precio = num(m.precio); if (m.cuentasPorGramo) m.cuentasPorGramo = num(m.cuentasPorGramo); if (m.porTira) m.porTira = dec(m.porTira); if (m.presentacion === "gramos") m.porGramo = dec(m.porGramo) || undefined; else delete m.porGramo;
       const pid = m.prodId; delete m.prodId;
       const i = S.materia.findIndex(x => x.id === m.id); if (i >= 0) S.materia[i] = m; else S.materia.push(m); guardar("materia", m);

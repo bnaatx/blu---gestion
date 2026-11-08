@@ -344,3 +344,6 @@ nav.tabs svg{width:22px;height:22px}
 .palabras .muted{flex-basis:100%}
 .pieza .otro-sel{border-style:dashed;color:var(--pink);font-weight:600}
 .pieza{display:flex;flex-direction:column;gap:6px}
+.loss-txt{color:var(--loss);font-weight:600}
+.color-chip{display:inline-flex;align-items:center;gap:4px}
+.color-chip button{border:0;background:none;color:var(--pink);font-size:16px;line-height:1;padding:0 2px;cursor:pointer}
