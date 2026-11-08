@@ -591,6 +591,7 @@ async function subirFotoIns(m, file) {
     return true;
   } catch (e) { console.error(e); toast("No se pudo subir la foto. Revisa tu conexión"); return false; }
 }
+const prodDeIns = m => S.productos.find(p => insLinks(p).some(l => l.id === m.id));
 const fotoInsBox = m => `${insThumb(m, "lg")}<div class="row wrap" style="gap:8px">${safeUrl(m.link) ? `<button class="btn sm" type="button" data-action="mm-traer">${m.foto ? "Volver a traer del link" : "Traer foto del link"}</button>` : ""}<label class="btn sm ghost filebtn">${m.foto ? "Cambiar" : "Subir foto"}<input type="file" id="mmFotoIn" accept="image/*"></label>${m.foto ? `<button class="btn sm ghost" type="button" data-action="mm-quitar-foto">Quitar</button>` : ""}<span class="muted small solo-compu" style="flex-basis:100%">o pega un pantallazo con ⌘V, o arrastra la imagen aquí</span></div>`;
 function provPorLink(link) {
   const l = buscaEn(lugarDeLink(link)); if (!l) return null;
@@ -613,7 +614,11 @@ function vMateria() {
   }
   const todosG = [...catsTodas(), ""].map(c => [c, S.materia.filter(m => catDe(m) === c).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))]).filter(([, l]) => l.length);
   if (ui.matCat != null && !todosG.some(([c]) => c === ui.matCat)) ui.matCat = null;
-  const grupos = ui.matCat == null ? todosG : todosG.filter(([c]) => c === ui.matCat);
+  /* Reventa se agrupa con las mismas categorías del catálogo (tipo del producto) */
+  const grupos = (ui.matCat == null ? todosG : todosG.filter(([c]) => c === ui.matCat)).flatMap(([c, l]) => { if (c !== "Reventa") return [[c, l]];
+    const por = {}; l.forEach(m => { const p = prodDeIns(m), k = p ? p.tipo || "Sin tipo" : "Sin producto enlazado"; (por[k] = por[k] || []).push(m); });
+    const orden = TIPOS.filter(t => por[t]).concat(Object.keys(por).filter(k => !TIPOS.includes(k)));
+    return orden.map(k => ["Reventa · " + k, por[k]]); });
   const chips = `<div class="chips mat-chips"><button class="chip" type="button" data-action="mat-cat" data-v="*" aria-pressed="${ui.matCat == null}">Todos</button>${todosG.map(([c, l]) => `<button class="chip" type="button" data-action="mat-cat" data-v="${esc(c)}" aria-pressed="${ui.matCat === c}">${c || "Sin categoría"} (${l.length})</button>`).join("")}</div>`;
   const fila = m => { const url = safeUrl(m.link), ic = infoCat(m), cant = dec(m.cantidadIngresada) || dec(m.cantidad), pres = m.presentacion === "docenas" ? (cant === 1 ? "docena" : "docenas") : m.presentacion === "tiras" ? (cant === 1 ? "tira" : "tiras") + " de " + decTxt(dec(m.porTira)) : m.presentacion === "gramos" ? (cant === 1 ? "gramo" : "gramos") : (cant === 1 ? ic.u : ic.pl), s = buscaEn(m.nombre + " " + provNombre(m) + " " + catDe(m));
     return `<div class="prow tappable" data-action="edit-mat" data-id="${m.id}" role="button" tabindex="0" data-s="${esc(s)}"${q && !s.includes(q) ? " hidden" : ""}>
@@ -623,7 +628,7 @@ function vMateria() {
   return `${tabs}<div class="row"><input class="search grow" id="matQ" data-input="matQ" placeholder="Buscar insumo o proveedor" value="${esc(ui.matQ)}" aria-label="Buscar insumo"><button class="btn" type="button" data-action="new-mat">+ Insumo</button></div>
   ${chips}
   ${grupos.length ? grupos.map(([c, l]) => `<h3 style="margin-top:4px">${c || "Sin categoría"} <span class="muted">(${l.length})</span></h3>
-    ${c ? "" : `<p class="muted small" style="margin:0">Toca cada uno para asignarle su categoría.</p>`}
+    ${c ? "" : `<p class="muted small" style="margin:0">Toca cada uno para asignarle su categoría.</p>`}${c === "Reventa · Sin producto enlazado" ? `<p class="muted small" style="margin:0">Ábrelos y escoge qué producto del catálogo son.</p>` : ""}
     <section class="card" style="padding-block:4px">${l.map(fila).join("")}</section>`).join("") : '<div class="empty">Todavía no tienes materia prima</div>'}`;
 }
 
@@ -1168,6 +1173,8 @@ function drawMatForm(focusId) {
   box.innerHTML = `
     <div class="row" style="gap:12px;align-items:center" id="mmFoto">${fotoInsBox(m)}</div>
     <div class="field"><span class="lbl">Categoría</span><div class="chips">${catsTodas().map(c => `<button class="chip" type="button" data-action="mm-cat" data-v="${esc(c)}" aria-pressed="${m.categoria === c}">${esc(c)}</button>`).join("")}</div></div>
+    ${m.categoria === "Reventa" ? (() => { const actual = m.prodId != null ? +m.prodId : (prodDeIns(m) || {}).codigo; const porTipo = {}; activos().forEach(p => (porTipo[p.tipo || "Sin tipo"] = porTipo[p.tipo || "Sin tipo"] || []).push(p));
+      return `<div class="field"><label for="mm_prod">¿Qué producto del catálogo es?</label><select id="mm_prod" data-mm="prodId"><option value="">Escoge el producto…</option>${TIPOS.filter(t => porTipo[t]).concat(Object.keys(porTipo).filter(k => !TIPOS.includes(k))).map(t => `<optgroup label="${esc(t)}">${porTipo[t].sort((a, b) => a.nombre.localeCompare(b.nombre, "es")).map(p => `<option value="${p.codigo}" ${actual === p.codigo ? "selected" : ""}>${esc(p.nombre)}</option>`).join("")}</optgroup>`).join("")}</select><span class="muted small">Queda en la misma categoría del catálogo y su costo se pasa al producto.</span></div>`; })() : ""}
     ${BASES.includes(m.categoria) ? `<label class="row" style="gap:8px"><input type="checkbox" data-mm="predeterminado" ${m.predeterminado ? "checked" : ""}> <span>Usarlo por defecto en todos los productos de ${m.categoria === "Hilo" ? "hilo (manillas)" : m.categoria === "Nailon" ? "nailon (pulseras y collares)" : "cadena (cadenitas)"}</span></label>` : ""}
     ${m.categoria === "Otro" ? `<div class="field"><label for="mm_nuevacat">Nueva categoría (opcional)</label><input id="mm_nuevacat" data-mm="nuevaCat" value="${esc(m.nuevaCat || "")}" placeholder="Ej: Letras, Perlas, Argollas"><span class="muted small">Si la escribes, se crea y te queda para los demás insumos.</span></div>` : ""}
     <div class="field"><label for="mm_nombre">Nombre</label><input id="mm_nombre" data-mm="nombre" value="${esc(m.nombre)}"></div>
@@ -1461,7 +1468,12 @@ document.addEventListener("click", e => {
       if (m.predeterminado && BASES.includes(m.categoria)) S.materia.filter(x => x.id !== m.id && x.predeterminado && catDe(x) === m.categoria).forEach(x => { x.predeterminado = false; guardar("materia", x); }); else if (!BASES.includes(m.categoria)) delete m.predeterminado;
       if (+m.proveedorId) { m.proveedorId = +m.proveedorId; m.lugar = (S.proveedores.find(v => v.id === m.proveedorId) || {}).nombre || m.lugar; } else delete m.proveedorId;
       m.cantidadIngresada = dec(m.cantidadIngresada); m.cantidad = baseCantidad(m) || m.cantidad; m.precio = num(m.precio); if (m.cuentasPorGramo) m.cuentasPorGramo = num(m.cuentasPorGramo); if (m.porTira) m.porTira = dec(m.porTira); if (m.presentacion === "gramos") m.porGramo = dec(m.porGramo) || undefined; else delete m.porGramo;
-      const i = S.materia.findIndex(x => x.id === m.id); if (i >= 0) S.materia[i] = m; else S.materia.push(m); guardar("materia", m); closeSheet(); render(); toast("Guardado"); break; }
+      const pid = m.prodId; delete m.prodId;
+      const i = S.materia.findIndex(x => x.id === m.id); if (i >= 0) S.materia[i] = m; else S.materia.push(m); guardar("materia", m);
+      if (m.categoria === "Reventa" && pid !== undefined) { const nuevo = pid === "" ? null : S.productos.find(p => p.codigo === +pid);
+        S.productos.forEach(p => { if (p === nuevo) return; if (insLinks(p).some(l => l.id === m.id)) { p.insumos = insLinks(p).filter(l => l.id !== m.id); guardar("productos", p); } });
+        if (nuevo) { nuevo.insumos = insLinks(nuevo).filter(l => { const x = S.materia.find(y => y.id === l.id); return !x || catDe(x) !== "Reventa"; }).concat({ id: m.id, usa: 1 }); nuevo.hecho = true; guardar("productos", nuevo); } }
+      closeSheet(); render(); toast("Guardado"); break; }
     case "new-content": editContent(null); break;
     case "edit-content": editContent(t.dataset.id); break;
     case "save-content": { const c = editingC; if (!c.titulo.trim()) { toast("Ponle un tema al contenido"); return; }
