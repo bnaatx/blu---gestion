@@ -51,7 +51,7 @@ const serStyle = id => { const s = serie(id); return `--sc:${s.sc};--si:${s.si}`
 const safeUrl = u => /^https?:\/\//i.test(String(u || "").trim()) ? String(u).trim() : "";
 
 /* Fotos de productos: bucket público "fotos" en Supabase Storage, una carpeta por usuario */
-const rutaFoto = f => !f ? "" : /^https?:/i.test(f) ? f : window.BLU_CONFIG.supabaseUrl + "/storage/v1/object/public/fotos/" + f;
+const rutaFoto = f => !f ? "" : /^(https?:|data:image\/)/i.test(f) ? f : window.BLU_CONFIG.supabaseUrl + "/storage/v1/object/public/fotos/" + f;
 /* Reventa: el producto y su insumo comparten la foto (si uno no tiene, usa la del otro) */
 const fotoUrl = p => { if (!p) return ""; if (p.foto) return rutaFoto(p.foto); if (!p.insumos || !S.materia) return ""; const m = insLinks(p).map(l => S.materia.find(x => x.id === l.id)).find(x => x && x.foto && catDe(x) === "Reventa"); return m ? rutaFoto(m.foto) : ""; };
 /* Saca el link de un texto compartido (ej. "1 pieza Collar… https://onelink.shein.com/…") */
@@ -581,7 +581,7 @@ const provDe = m => S.proveedores.find(v => v.id === m.proveedorId);
 const igUrl = v => { const h = String(v || "").trim().replace(/^@/, ""); if (!h) return ""; if (/^https?:\/\//i.test(h)) return safeUrl(h); return "https://instagram.com/" + h.replace(/^(www\.)?instagram\.com\//i, "").replace(/[\/?#].*$/, ""); };
 const igHandle = v => { const u = igUrl(v); return u ? "@" + u.replace(/[?#].*$/, "").replace(/\/+$/, "").split("/").pop() : ""; };
 const provNombre = m => (provDe(m) || {}).nombre || m.lugar || "";
-const logoUrl = v => v && v.logo ? window.BLU_CONFIG.supabaseUrl + "/storage/v1/object/public/fotos/" + v.logo : "";
+const logoUrl = v => v && v.logo ? rutaFoto(v.logo) : "";
 const logo = (v, cls = "") => { const u = logoUrl(v); return u ? `<img class="logo-prov ${cls}" src="${esc(u)}" alt="" loading="lazy">` : `<span class="logo-prov ph ${cls}" aria-hidden="true">${esc((v && v.nombre || "?").trim().charAt(0).toUpperCase())}</span>`; };
 
 /* Foto de cada insumo: se trae sola del link de compra (función og-image en Supabase) o se sube a mano */
