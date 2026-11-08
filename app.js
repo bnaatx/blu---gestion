@@ -124,7 +124,7 @@ const MARGEN_NUDO = 10;
 const esCollarT = p => /collar/i.test(p.tipo || "");
 const tallaCm = p => (TALLAS.find(([n]) => n === p.talla) || TALLAS[0])[1];
 const nailonCollar = p => Math.round((tallaCm(p) + MARGEN_NUDO) / 100 * usaBase(p) * 100) / 100;
-const usaDefecto = (cat, p) => cat === "Reventa" || cat === "Empaque" ? 1 : cat === "Herrajes" ? 2 * usaBase(p) : cat === "Hilo" ? Math.round(1.3 * usaBase(p) * 10) / 10 : cat === "Nailon" && esCollarT(p) ? nailonCollar(p) : usaBase(p);
+const usaDefecto = (cat, p) => cat === "Reventa" || cat === "Empaque" ? 1 : cat === "Herrajes" ? 2 * usaBase(p) + n0(p.balinesExtra) : cat === "Hilo" ? Math.round(1.3 * usaBase(p) * 10) / 10 : cat === "Nailon" && esCollarT(p) ? nailonCollar(p) : usaBase(p);
 /* Lo que lleva fijo cada tipo: su base y, en manillas, los balines de los extremos */
 const fijasDe = p => { if (esHecho(p)) return []; const b = baseCat(p); return [b, /manilla/i.test(p.tipo || "") ? "Herrajes" : ""].filter(Boolean); };
 function linksEf(p) {
@@ -210,7 +210,7 @@ function drawPiezas() {
       ${sels.map(x => filaPieza(cat, x.m, x.l, ops, usados, sels.length > 1 ? "Quitar" : vacio)).join("")}
       ${!sels.length ? `<select id="${id}" data-pieza="${cat}" data-old=""><option value="">${vacio}</option>${optsDe(ops, null, [])}</select>`
         : libres.length ? `<select class="otro-sel" id="${id}" data-pieza="${cat}" data-old=""><option value="">+ Agregar otro de ${cat.toLowerCase()}</option>${optsDe(libres, null, [])}</select>` : ""}
-      ${!ops.length ? `<span class="muted small">No tienes insumos de ${cat.toLowerCase()} en Materia.</span>` : ""}</div>${cat === "Nailon" && esCollarT(p) ? `<div class="field"><span class="lbl">Talla del collar</span><div class="chips">${TALLAS.map(([n, cm]) => `<button class="chip" type="button" data-action="pp-talla" data-v="${n}" aria-pressed="${(p.talla || "Estándar") === n}">${n} · ${cm} cm</button>`).join("")}</div><span class="muted small">Usa ${tallaCm(p)} cm + ${MARGEN_NUDO} cm para amarres${usaBase(p) > 1 ? " × " + usaBase(p) : ""} = ${decTxt(nailonCollar(p))} m de nailon</span></div>` : ""}`; }).join("")}</div>
+      ${!ops.length ? `<span class="muted small">No tienes insumos de ${cat.toLowerCase()} en Materia.</span>` : ""}</div>${cat === "Herrajes" && /manilla/i.test(p.tipo || "") ? `<div class="row between" style="gap:8px;margin-top:-4px"><span class="small">Balines extra <span class="muted">(además de los ${2 * usaBase(p)} de los extremos)</span></span><div class="stepper"><button class="icon-btn" type="button" data-action="pp-extra" data-d="-1" aria-label="Quitar un balín extra">−</button><b>${n0(p.balinesExtra)}</b><button class="icon-btn" type="button" data-action="pp-extra" data-d="1" aria-label="Agregar un balín extra">+</button></div></div>` : ""}${cat === "Nailon" && esCollarT(p) ? `<div class="field"><span class="lbl">Talla del collar</span><div class="chips">${TALLAS.map(([n, cm]) => `<button class="chip" type="button" data-action="pp-talla" data-v="${n}" aria-pressed="${(p.talla || "Estándar") === n}">${n} · ${cm} cm</button>`).join("")}</div><span class="muted small">Usa ${tallaCm(p)} cm + ${MARGEN_NUDO} cm para amarres${usaBase(p) > 1 ? " × " + usaBase(p) : ""} = ${decTxt(nailonCollar(p))} m de nailon</span></div>` : ""}`; }).join("")}</div>
     ${manual ? `<p class="muted small" style="margin:0">Mientras no escojas, se usan los valores que tenía: ${n0(p.hilo) ? baseLbl(p).toLowerCase() + " " + $(p.hilo) : ""}${n0(p.hilo) && n0(p.dije) ? ", " : ""}${n0(p.dije) ? "dije " + $(p.dije) : ""}${n0(p.mostacillas) ? ", mostacillas " + $(p.mostacillas) : ""}${n0(p.compra) ? (n0(p.hilo) || n0(p.dije) ? ", " : "") + "otros " + $(p.compra) : ""}.</p>` : ""}`;
 }
 /* Letras: escribe la palabra de cada manilla y la app cuenta cuántas letras usa */
@@ -1474,6 +1474,9 @@ document.addEventListener("click", e => {
     case "quitar-logo": { const vieja = editingProv.logo; editingProv.logo = ""; if (vieja) sb.storage.from("fotos").remove([vieja]).catch(() => {}); const real = S.proveedores.find(x => x.id === editingProv.id); if (real) { real.logo = ""; guardar("proveedores", real); } drawProvLogo(); break; }
     case "ver-kit": closeSheet(); ui.matSeg = "empaque"; go("materia"); break;
     case "kit-edit": editKit(t.dataset.id); break;
+    case "pp-extra": { const d = +t.dataset.d, antes = n0(editing.balinesExtra), nuevo = Math.max(0, antes + d); if (nuevo === antes) break; editing.balinesExtra = nuevo;
+      const bd = baseDefecto("Herrajes"); if (bd) editing.insumos = insLinks(editing).map(l => l.id === bd.id ? { ...l, usa: Math.max(0, dec(l.usa) + (nuevo - antes)) } : l);
+      drawProdIns(); break; }
     case "pp-talla": { editing.talla = v; const nl = insLinks(editing).find(l => { const m = S.materia.find(x => x.id === l.id); return m && catDe(m) === "Nailon"; }); if (nl) nl.usa = nailonCollar(editing), editing.insumos = insLinks(editing).map(l => l.id === nl.id ? nl : l); drawProdIns(); break; }
     case "pp-hecho": { if (v === "0" && insLinks(editing).some(l => { const m = S.materia.find(x => x.id === l.id); return m && catDe(m) === "Reventa"; })) { toast("Quítale primero el insumo “Reventa” de abajo"); break; } editing.hecho = v === "1"; drawProdTot(); break; }
     case "kit-save": { const it = editingKit; if (!String(it.nombre).trim()) { toast("Ponle nombre"); return; } it.nombre = it.nombre.trim();
