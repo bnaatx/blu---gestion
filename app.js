@@ -616,7 +616,7 @@ async function subirFotoIns(m, file) {
   } catch (e) { console.error(e); toast("No se pudo subir la foto. Revisa tu conexión"); return false; }
 }
 const prodDeIns = m => S.productos.find(p => insLinks(p).some(l => l.id === m.id));
-const fotoInsBox = m => `${insThumb(m, "lg")}<div class="row wrap" style="gap:8px">${safeUrl(m.link) ? `<button class="btn sm" type="button" data-action="mm-traer">${m.foto ? "Volver a traer del link" : "Traer foto del link"}</button>` : ""}<label class="btn sm ghost filebtn">${m.foto ? "Cambiar" : "Subir foto"}<input type="file" id="mmFotoIn" accept="image/*"></label>${m.foto ? `<button class="btn sm ghost" type="button" data-action="mm-quitar-foto">Quitar</button>` : ""}<span class="muted small solo-compu" style="flex-basis:100%">o pega un pantallazo con ⌘V, o arrastra la imagen aquí</span></div>`;
+const fotoInsBox = m => `${insThumb(m, "lg")}<div class="row wrap" style="gap:8px">${safeUrl(m.link) ? `<button class="btn sm" type="button" data-action="mm-traer">${m.foto ? "Volver a traer del link" : "Traer foto del link"}</button>` : ""}<label class="btn sm ghost filebtn">${m.foto ? "Cambiar" : "Subir foto"}<input type="file" id="mmFotoIn" accept="image/*"></label><label class="btn sm ghost filebtn solo-cel">📷 Tomar foto<input type="file" data-cam accept="image/*" capture="environment"></label>${m.foto ? `<button class="btn sm ghost" type="button" data-action="mm-quitar-foto">Quitar</button>` : ""}<span class="muted small solo-compu" style="flex-basis:100%">o pega un pantallazo con ⌘V, o arrastra la imagen aquí</span></div>`;
 function provPorLink(link) {
   const l = buscaEn(lugarDeLink(link)); if (!l) return null;
   return S.proveedores.find(v => { const n = buscaEn(v.nombre); return n && (n.includes(l) || l.includes(n.split(" ").pop())); }) || null;
@@ -709,7 +709,7 @@ function editProv(id) {
 }
 function drawProvLogo() {
   const el = $id("provLogo"); if (!el || !editingProv) return;
-  el.innerHTML = `${logo(editingProv, "xl")}<div class="row wrap" style="gap:8px"><label class="btn sm ${logoUrl(editingProv) ? "ghost" : ""} filebtn">${logoUrl(editingProv) ? "Cambiar logo" : "Agregar logo"}<input type="file" id="pvLogoIn" accept="image/*"></label>${logoUrl(editingProv) ? `<button class="btn sm ghost" type="button" data-action="quitar-logo">Quitar</button>` : ""}<span class="muted small solo-compu" style="flex-basis:100%">o pega un pantallazo con ⌘V, o arrastra la imagen aquí</span></div>`;
+  el.innerHTML = `${logo(editingProv, "xl")}<div class="row wrap" style="gap:8px"><label class="btn sm ${logoUrl(editingProv) ? "ghost" : ""} filebtn">${logoUrl(editingProv) ? "Cambiar logo" : "Agregar logo"}<input type="file" id="pvLogoIn" accept="image/*"></label><label class="btn sm ghost filebtn solo-cel">📷 Tomar foto<input type="file" data-cam accept="image/*" capture="environment"></label>${logoUrl(editingProv) ? `<button class="btn sm ghost" type="button" data-action="quitar-logo">Quitar</button>` : ""}<span class="muted small solo-compu" style="flex-basis:100%">o pega un pantallazo con ⌘V, o arrastra la imagen aquí</span></div>`;
 }
 async function subirLogo(v, file) {
   toast("Subiendo logo…");
@@ -1182,7 +1182,7 @@ function drawProdFoto() {
   const el = $id("ppFoto"); if (!el || !editing) return;
   const u = fotoUrl(editing);
   el.innerHTML = `${u ? `<img class="foto-big" src="${esc(u)}" alt="Foto de ${esc(editing.nombre)}">` : `<div class="foto-big ph"><span>Sin foto</span></div>`}
-    <div class="row" style="gap:8px"><label class="btn ${u ? "ghost" : ""} grow filebtn">${u ? "Cambiar foto" : "Agregar foto"}<input type="file" id="ppFotoIn" accept="image/*"></label>
+    <div class="row" style="gap:8px"><label class="btn ${u ? "ghost" : ""} grow filebtn">${u ? "Cambiar foto" : "Agregar foto"}<input type="file" id="ppFotoIn" accept="image/*"></label><label class="btn ghost filebtn solo-cel">📷 Tomar foto<input type="file" data-cam accept="image/*" capture="environment"></label>
     ${u ? `<button class="btn ghost" type="button" data-action="quitar-foto">Quitar</button>` : ""}</div><span class="muted small solo-compu" style="flex-basis:100%">o pega un pantallazo con ⌘V, o arrastra la imagen aquí</span>`;
 }
 function drawProdTot() {
@@ -1595,6 +1595,7 @@ document.addEventListener("input", e => {
 });
 document.addEventListener("change", e => {
   const t = e.target;
+  if (t.hasAttribute && t.hasAttribute("data-cam")) { const f = t.files && t.files[0]; t.value = ""; if (f) fotoDesdeArchivo(f); return; }
   if (t.hasAttribute && t.hasAttribute("data-pp-perso") && editing) { editing.personalizado = t.checked; return; }
   if (t.dataset.change === "mes") { ui.ventasMes = t.value; render(); }
   if (t.dataset.pieza && editing) { const cat = t.dataset.pieza, old = +t.dataset.old || 0, base = BASES.includes(cat);

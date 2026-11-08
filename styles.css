@@ -355,3 +355,5 @@ nav.tabs svg{width:22px;height:22px}
 .col-poco{background:#FBF1DC;border-color:#E7B54D;color:#7A5A12}
 .col-falta{background:#F8E1E4;border-color:#C9566A;color:#8A2337}
 .tag.poco{background:#FBF1DC;color:#7A5A12}
+.solo-cel{display:none}
+@media (hover:none) and (pointer:coarse){.solo-cel{display:inline-flex}}
