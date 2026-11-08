@@ -520,16 +520,17 @@ function editInv(id) {
 /* Familias para filtrar el inventario */
 const FAMILIAS = [["Manillas", /manilla/i], ["Pulseras", /pulsera/i], ["Cadenitas", /cadenit/i], ["Collares", /collar/i], ["Anillos", /anillo/i]];
 const famDe = p => (FAMILIAS.find(([, r]) => r.test(p.tipo || "")) || ["Otros"])[0];
+const enFiltro = (p, f) => !f || (f === "Personalizados" ? !!p.personalizado : famDe(p) === f);
 function vStock() {
   const q = buscaEn(ui.stockQ);
-  const lista = activos().filter(p => (!ui.stockTipo || famDe(p) === ui.stockTipo))
+  const lista = activos().filter(p => enFiltro(p, ui.stockTipo))
     .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
   const unid = activos().reduce((a, p) => a + Math.max(0, p.stock), 0);
   return `<input class="search" id="stockQ" data-input="stockQ" placeholder="Buscar producto" value="${esc(ui.stockQ)}" aria-label="Buscar producto">
-  <div class="chips mat-chips"><button class="chip" type="button" data-action="stock-tipo" data-v="" aria-pressed="${!ui.stockTipo}">Todos (${activos().length})</button>${FAMILIAS.map(([f]) => [f, activos().filter(p => famDe(p) === f).length]).concat([["Otros", activos().filter(p => famDe(p) === "Otros").length]]).filter(([, n]) => n).map(([f, n]) => `<button class="chip" type="button" data-action="stock-tipo" data-v="${f}" aria-pressed="${ui.stockTipo === f}">${f} (${n})</button>`).join("")}</div>
+  <div class="chips mat-chips"><button class="chip" type="button" data-action="stock-tipo" data-v="" aria-pressed="${!ui.stockTipo}">Todos (${activos().length})</button>${FAMILIAS.map(([f]) => [f, activos().filter(p => famDe(p) === f).length]).concat([["Otros", activos().filter(p => famDe(p) === "Otros").length], ["Personalizados", activos().filter(p => p.personalizado).length]]).filter(([f, n]) => n || f === "Personalizados").map(([f, n]) => `<button class="chip" type="button" data-action="stock-tipo" data-v="${f}" aria-pressed="${ui.stockTipo === f}">${f} (${n})</button>`).join("")}</div>
   <p class="muted small" style="margin:0">${unid} unidades en stock · <span id="cuentaQ">${lista.filter(p => !q || buscaEn(p.nombre + " " + p.tipo).includes(q)).length}</span> productos</p>
   <section class="card" style="padding-block:4px">${lista.map(p => `<div class="prow tappable" data-action="ver-prod" data-c="${p.codigo}" role="button" tabindex="0" data-s="${esc(buscaEn(p.nombre + " " + p.tipo))}"${q && !buscaEn(p.nombre + " " + p.tipo).includes(q) ? " hidden" : ""}>
-    ${thumb(p)}<div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)}${p.stock <= 0 ? " · Agotado" : ""}</div>${p.stock <= 0 ? tagHacer(p) : ""}${enRemate(p) ? `<span class="tag remate">Remate ${$(p.precioRemate)}</span>` : ""}</div>
+    ${thumb(p)}<div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)}${p.stock <= 0 ? " · Agotado" : ""}</div>${p.personalizado ? '<span class="tag">Personalizado</span>' : ""}${p.stock <= 0 ? tagHacer(p) : ""}${enRemate(p) ? `<span class="tag remate">Remate ${$(p.precioRemate)}</span>` : ""}</div>
     <div class="stepper"><button class="icon-btn" type="button" data-action="stock" data-c="${p.codigo}" data-d="-1" aria-label="Restar uno a ${esc(p.nombre)}">−</button>
     <b class="${p.stock <= 0 ? "zero" : ""}">${p.stock}</b>
     <button class="icon-btn" type="button" data-action="stock" data-c="${p.codigo}" data-d="1" aria-label="Sumar uno a ${esc(p.nombre)}">+</button></div></div>`).join("") || '<div class="empty">No hay productos con ese filtro</div>'}</section>`;
@@ -1120,7 +1121,7 @@ function verProd(codigo) {
   const costos = [[baseLbl(p), cd.hilo], ["Dije", cd.dije], ["Mostacillas", cd.mostacillas], [esHecho(p) ? "Lo compraste a" : usaInsumos(p) ? "Pasadores y otros" : "Compra", cd.compra], ["Mano de obra", manoDe(p)]].filter(([, v]) => n0(v));
   openSheet(p.nombre, `
     ${u ? `<img class="foto-big" src="${esc(u)}" alt="Foto de ${esc(p.nombre)}">` : `<div class="foto-big ph"><span>Sin foto</span></div>`}
-    <div class="row between wrap" style="gap:8px"><span class="muted">${esc(p.tipo)} · #${p.codigo}${esHecho(p) ? " · Reventa" : ""}</span><span class="tag ${remo(p) === "remodelado" ? "ok" : remo(p) === "archivado" ? "loss" : ""}">${REMO[remo(p)]}</span></div>
+    <div class="row between wrap" style="gap:8px"><span class="muted">${esc(p.tipo)} · #${p.codigo}${esHecho(p) ? " · Reventa" : ""}${p.personalizado ? " · Personalizado" : ""}</span><span class="tag ${remo(p) === "remodelado" ? "ok" : remo(p) === "archivado" ? "loss" : ""}">${REMO[remo(p)]}</span></div>
     <section class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
       <div><h3>Stock</h3><span class="muted small">${p.stock <= 0 ? "Agotado" : p.stock === 1 ? "Queda 1" : "Disponibles"}</span></div>
       <div class="stepper"><button class="icon-btn" type="button" data-action="stock-det" data-c="${p.codigo}" data-d="-1" aria-label="Restar uno">−</button><b class="${p.stock <= 0 ? "zero" : ""}" style="font-size:22px">${p.stock}</b><button class="icon-btn" type="button" data-action="stock-det" data-c="${p.codigo}" data-d="1" aria-label="Sumar uno">+</button></div>
@@ -1160,6 +1161,7 @@ function editProd(codigo) {
     <div class="foto-edit" id="ppFoto"></div>
     <div class="field"><label for="pp_nombre">Nombre</label><input id="pp_nombre" data-pp="nombre" value="${esc(p.nombre)}"></div>
     <div class="grid2"><div class="field"><label for="pp_tipo">Tipo</label><select id="pp_tipo" data-pp="tipo">${TIPOS.map(t => `<option ${t === p.tipo ? "selected" : ""}>${t}</option>`).join("")}</select></div>${f("stock", "Stock")}</div>
+    <label class="row" style="gap:8px"><input type="checkbox" data-pp-perso ${p.personalizado ? "checked" : ""}> <span><b>Personalizado</b> <span class="muted small">(el cliente lo pide a su gusto: nombre, colores, diseño…)</span></span></label>
     <div class="field"><span class="lbl">Origen</span><div class="seg" id="ppHecho"><button type="button" data-action="pp-hecho" data-v="0" aria-pressed="${!esHecho(p)}">Artesanal</button><button type="button" data-action="pp-hecho" data-v="1" aria-pressed="${esHecho(p)}">Reventa</button></div></div>
     <h3>Costos</h3>
     <div id="ppPiezas"></div>
@@ -1539,6 +1541,7 @@ document.addEventListener("keydown", e => {
 });
 document.addEventListener("input", e => {
   const t = e.target;
+  if (t.hasAttribute && t.hasAttribute("data-pp-perso") && editing) { editing.personalizado = t.checked; return; }
   if (t.dataset.mm === "link" || t.dataset.inf === "link") { const u = extraerUrl(t.value); if (u !== t.value.trim() && /^https?:/i.test(u)) t.value = u; }
   if (t.dataset.palabra != null && editing) { const i = +t.dataset.palabra, id = +t.dataset.ins; editing.palabras = Array.from({ length: usaBase(editing) }, (_, k) => k === i ? t.value : (editing.palabras || [])[k] || "");
     const n = contarLetras(editing.palabras); editing.insumos = linksEf(editing).map(({ defecto, ...x }) => x.id === id ? { ...x, usa: n } : x);
@@ -1583,6 +1586,7 @@ document.addEventListener("input", e => {
 });
 document.addEventListener("change", e => {
   const t = e.target;
+  if (t.hasAttribute && t.hasAttribute("data-pp-perso") && editing) { editing.personalizado = t.checked; return; }
   if (t.dataset.change === "mes") { ui.ventasMes = t.value; render(); }
   if (t.dataset.pieza && editing) { const cat = t.dataset.pieza, old = +t.dataset.old || 0, base = BASES.includes(cat);
     let ls = linksEf(editing).map(({ defecto, ...x }) => x);
