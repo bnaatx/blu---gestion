@@ -1139,7 +1139,7 @@ function verProd(codigo) {
     </section>
     ${(() => { const r = puedeHacer(p); if (!r) return ""; const ls = linksEf(p).map(l => ({ l, m: S.materia.find(x => x.id === l.id) })).filter(x => x.m);
       return `<section class="card"><div class="row between" style="gap:8px"><h3>Materia prima en casa</h3>${r.ok ? '<span class="tag ok">Se puede hacer</span>' : r.faltan.length ? '<span class="tag loss">Falta material</span>' : '<span class="tag">Sin registrar</span>'}</div>
-      ${ls.map(({ l, m }) => { const ok = tieneCasa(m) && dec(m.enCasa) >= dec(l.usa); return `<div class="row between small" style="gap:8px"><span>${esc(m.nombre)} <span class="muted">(usa ${decTxt(dec(l.usa))})</span></span><span class="${tieneCasa(m) ? (ok ? "" : "loss-txt") : "muted"}">${tieneCasa(m) ? "Tienes " + casaTxt(m) : "Sin registrar"}</span></div>`; }).join("")}
+      ${ls.map(({ l, m }) => { const ok = tieneCasa(m) && dec(m.enCasa) >= dec(l.usa); const ab = { unidad: "u", metro: "m", gramo: "g" }[infoCat(m).u] || ""; return `<div class="casa-fila small"><span class="casa-n">${esc(m.nombre)} <span class="muted">×${decTxt(dec(l.usa))}</span></span><span class="casa-v ${tieneCasa(m) ? (ok ? "" : "loss-txt") : "muted"}">${tieneCasa(m) ? "Tienes " + (miles(Math.round(dec(m.enCasa) * 100) / 100) || "0") + " " + ab : "Sin registrar"}</span></div>`; }).join("")}
       ${r.sinDato.length ? `<p class="muted small" style="margin:0">Pon cuánto tienes en casa de cada insumo en Materia para saber si alcanza.</p>` : ""}
       <button class="btn block line" type="button" data-action="arme" data-c="${p.codigo}">Armé 1 · suma al stock</button></section>`; })()}
     <div class="totals">

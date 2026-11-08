@@ -357,3 +357,6 @@ nav.tabs svg{width:22px;height:22px}
 .tag.poco{background:#FBF1DC;color:#7A5A12}
 .solo-cel{display:none}
 @media (hover:none) and (pointer:coarse){.solo-cel{display:inline-flex}}
+.casa-fila{display:flex;align-items:baseline;gap:8px;min-width:0}
+.casa-n{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.casa-v{flex:none;white-space:nowrap}
