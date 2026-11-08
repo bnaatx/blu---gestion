@@ -116,7 +116,7 @@ const unitario = m => dec(m.cantidad) ? n0(m.precio) / dec(m.cantidad) : 0;
 const $u = n => n > 0 && n < 1000 && Math.round(n * 10) !== Math.round(n) * 10 ? "$ " + n.toLocaleString("es-CO", { maximumFractionDigits: 1 }) : $(n);
 const insLinks = p => (p.insumos || []).map(x => typeof x === "object" && x ? x : { id: x, usa: 1 });
 /* Base predeterminada: si el producto artesanal no tiene su hilo/nailon/cadena escogido, usa el de por defecto */
-const BASES = ["Hilo", "Nailon", "Cadena"];
+const BASES = ["Hilo", "Nailon", "Cadena", "Balines"];
 const baseDefecto = cat => { const ops = S.materia.filter(m => catDe(m) === cat).sort((x, y) => x.id - y.id); return ops.find(m => m.predeterminado) || ops[0] || null; };
 /* Tallas de collar (guía de Blu) + 10 cm para amarres */
 const TALLAS = [["Estándar", 35], ["Mediana", 41], ["Grande", 46], ["Extra grande", 50]];
@@ -124,11 +124,14 @@ const MARGEN_NUDO = 10;
 const esCollarT = p => /collar/i.test(p.tipo || "");
 const tallaCm = p => (TALLAS.find(([n]) => n === p.talla) || TALLAS[0])[1];
 const nailonCollar = p => Math.round((tallaCm(p) + MARGEN_NUDO) / 100 * usaBase(p) * 100) / 100;
-const usaDefecto = (cat, p) => cat === "Reventa" || cat === "Empaque" ? 1 : cat === "Hilo" ? Math.round(1.3 * usaBase(p) * 10) / 10 : cat === "Nailon" && esCollarT(p) ? nailonCollar(p) : usaBase(p);
+const usaDefecto = (cat, p) => cat === "Reventa" || cat === "Empaque" ? 1 : cat === "Balines" ? 2 * usaBase(p) : cat === "Hilo" ? Math.round(1.3 * usaBase(p) * 10) / 10 : cat === "Nailon" && esCollarT(p) ? nailonCollar(p) : usaBase(p);
+/* Lo que lleva fijo cada tipo: su base y, en manillas, los balines de los extremos */
+const fijasDe = p => { if (esHecho(p)) return []; const b = baseCat(p); return [b, /manilla/i.test(p.tipo || "") ? "Balines" : ""].filter(Boolean); };
 function linksEf(p) {
-  const l = insLinks(p), cat = !esHecho(p) && baseCat(p); if (!cat) return l;
-  if (l.some(x => { const m = S.materia.find(y => y.id === x.id); return m && catDe(m) === cat; })) return l;
-  const d = baseDefecto(cat); return d ? l.concat({ id: d.id, usa: usaDefecto(cat, p), defecto: true }) : l;
+  let l = insLinks(p);
+  fijasDe(p).forEach(cat => { if (l.some(x => { const m = S.materia.find(y => y.id === x.id); return m && catDe(m) === cat; })) return;
+    const d = baseDefecto(cat); if (d) l = l.concat({ id: d.id, usa: usaDefecto(cat, p), defecto: true }); });
+  return l;
 }
 const usaInsumos = p => linksEf(p).some(l => S.materia.some(m => m.id === l.id));
 function materialesDe(p) {
@@ -183,11 +186,11 @@ const usaBase = p => /trio/i.test(p.tipo || "") ? 3 : /pareja/i.test(p.tipo || "
 const piezasDe = p => {
   if (esHecho(p)) return [["Reventa", "Lo que compraste (Reventa)"], ["Empaque", "Empaque propio (opcional)"]];
   const b = baseCat(p);
-  const base = b === "Hilo" ? [["Hilo", "Hilo"], ["Dije", "Dije (opcional)"], ["Pasador", "Pasador (opcional)"], ["Mostacilla", "Mostacilla (opcional)"]]
+  const base = b === "Hilo" ? [["Hilo", "Hilo"], ["Balines", "Balines (extremos)"], ["Dije", "Dije (opcional)"], ["Pasador", "Pasador (opcional)"], ["Mostacilla", "Mostacilla (opcional)"]]
     : b === "Nailon" ? [["Nailon", "Nailon"], ["Dije", "Dije (opcional)"], ["Porta dije", "Porta dije (opcional)"], ["Mostacilla", "Mostacilla (opcional)"], ["Pasador", "Pasador (opcional)"]]
     : b === "Cadena" ? [["Cadena", "Cadena"], ["Dije", "Dije"], ["Porta dije", "Porta dije (opcional)"], ["Pasador", "Pasador (opcional)"]]
     : [["Dije", "Dije (opcional)"], ["Pasador", "Pasador (opcional)"]];
-  const extra = catsTodas().filter(c => !CAT_INS[c]).map(c => [c, c + " (opcional)"]);
+  const extra = catsTodas().filter(c => !CAT_INS[c] && !base.some(([x]) => x === c)).map(c => [c, c + " (opcional)"]);
   const hay = c => S.materia.some(m => catDe(m) === c), puesta = c => insLinks(p).some(l => { const m = S.materia.find(x => x.id === l.id); return m && catDe(m) === c; });
   return base.concat(extra).filter(([c, l]) => !/opcional/.test(l) || hay(c) || puesta(c));
 };
@@ -1194,7 +1197,7 @@ function drawMatForm(focusId) {
     <div class="field"><span class="lbl">Categoría</span><div class="chips">${catsTodas().map(c => `<button class="chip" type="button" data-action="mm-cat" data-v="${esc(c)}" aria-pressed="${m.categoria === c}">${esc(c)}</button>`).join("")}</div></div>
     ${m.categoria === "Reventa" ? (() => { const actual = m.prodId != null ? +m.prodId : (prodDeIns(m) || {}).codigo; const porTipo = {}; activos().forEach(p => (porTipo[p.tipo || "Sin tipo"] = porTipo[p.tipo || "Sin tipo"] || []).push(p));
       return `<div class="field"><label for="mm_prod">¿Qué producto del catálogo es?</label><select id="mm_prod" data-mm="prodId"><option value="">Escoge el producto…</option>${TIPOS.filter(t => porTipo[t]).concat(Object.keys(porTipo).filter(k => !TIPOS.includes(k))).map(t => `<optgroup label="${esc(t)}">${porTipo[t].sort((a, b) => a.nombre.localeCompare(b.nombre, "es")).map(p => `<option value="${p.codigo}" ${actual === p.codigo ? "selected" : ""}>${esc(p.nombre)}</option>`).join("")}</optgroup>`).join("")}</select><span class="muted small">Queda en la misma categoría del catálogo y su costo se pasa al producto.</span></div>`; })() : ""}
-    ${BASES.includes(m.categoria) ? `<label class="row" style="gap:8px"><input type="checkbox" data-mm="predeterminado" ${m.predeterminado ? "checked" : ""}> <span>Usarlo por defecto en todos los productos de ${m.categoria === "Hilo" ? "hilo (manillas)" : m.categoria === "Nailon" ? "nailon (pulseras y collares)" : "cadena (cadenitas)"}</span></label>` : ""}
+    ${BASES.includes(m.categoria) ? `<label class="row" style="gap:8px"><input type="checkbox" data-mm="predeterminado" ${m.predeterminado ? "checked" : ""}> <span>Usarlo por defecto en todos los productos de ${m.categoria === "Hilo" ? "hilo (manillas)" : m.categoria === "Nailon" ? "nailon (pulseras y collares)" : m.categoria === "Balines" ? "balines (manillas)" : "cadena (cadenitas)"}</span></label>` : ""}
     ${m.categoria === "Otro" ? `<div class="field"><label for="mm_nuevacat">Nueva categoría (opcional)</label><input id="mm_nuevacat" data-mm="nuevaCat" value="${esc(m.nuevaCat || "")}" placeholder="Ej: Letras, Perlas, Argollas"><span class="muted small">Si la escribes, se crea y te queda para los demás insumos.</span></div>` : ""}
     <div class="field"><label for="mm_nombre">Nombre</label><input id="mm_nombre" data-mm="nombre" value="${esc(m.nombre)}"></div>
     <div class="field"><label for="mm_link">Link de compra</label><input id="mm_link" type="url" data-mm="link" value="${esc(m.link)}" placeholder="https://"></div>
@@ -1202,7 +1205,7 @@ function drawMatForm(focusId) {
     ${m.proveedorId === "otro" || (!m.proveedorId && m.lugar && !S.proveedores.length) ? `<div class="field"><label for="mm_lugar">¿Dónde lo compras?</label><input id="mm_lugar" data-mm="lugar" value="${esc(m.lugar)}"></div>` : ""}
     ${camposCompra(m, "mm")}
     <div class="field"><label for="mm_casa">¿Cuánto tienes en casa?</label><div class="row" style="gap:8px"><input id="mm_casa" inputmode="decimal" data-mm="enCasa" value="${tieneCasa(m) ? esc(decTxt(dec(m.enCasa))) : ""}" placeholder="Ej: 15"><span class="muted small" id="mm_casa_u">${infoCat(m).pl}</span></div><span class="muted small">Se descuenta sola cuando armas un producto agotado o vendes uno que tocó hacer.</span></div>
-    ${catDe(m) === "Hilo" || catDe(m) === "Nailon" ? `<div class="field"><span class="lbl">Colores que tienes</span><div class="chips" id="mm_colores">${(m.colores || []).map((c, i) => `<span class="chip color-chip">${esc(c)}<button type="button" data-action="mm-color-del" data-i="${i}" aria-label="Quitar ${esc(c)}">×</button></span>`).join("") || '<span class="muted small">Todavía no has puesto colores</span>'}</div>
+    ${["Hilo", "Nailon", "Balines"].includes(catDe(m)) ? `<div class="field"><span class="lbl">Colores que tienes</span><div class="chips" id="mm_colores">${(m.colores || []).map((c, i) => `<span class="chip color-chip">${esc(c)}<button type="button" data-action="mm-color-del" data-i="${i}" aria-label="Quitar ${esc(c)}">×</button></span>`).join("") || '<span class="muted small">Todavía no has puesto colores</span>'}</div>
       <div class="row" style="gap:8px"><input id="mm_color" placeholder="Ej: Rosado pastel" aria-label="Nuevo color"><button class="btn sm" type="button" data-action="mm-color-add">Agregar</button></div></div>` : ""}
     ${url ? `<a class="buy" style="align-self:flex-start" href="${esc(url)}" target="_blank" rel="noopener">Abrir link de compra</a>` : ""}
     ${usan.length ? `<p class="muted small" style="margin:0">Lo usan ${usan.length} producto${usan.length > 1 ? "s" : ""}: ${usan.slice(0, 6).map(p => esc(p.nombre)).join(", ")}${usan.length > 6 ? "…" : ""}. Si cambias el precio, su costo se actualiza solo.</p>` : ""}
