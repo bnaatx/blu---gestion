@@ -517,13 +517,16 @@ function editInv(id) {
 }
 
 /* ---------- Inventario ---------- */
+/* Familias para filtrar el inventario */
+const FAMILIAS = [["Manillas", /manilla/i], ["Pulseras", /pulsera/i], ["Cadenitas", /cadenit/i], ["Collares", /collar/i], ["Anillos", /anillo/i]];
+const famDe = p => (FAMILIAS.find(([, r]) => r.test(p.tipo || "")) || ["Otros"])[0];
 function vStock() {
   const q = buscaEn(ui.stockQ);
-  const lista = activos().filter(p => (!ui.stockTipo || p.tipo === ui.stockTipo))
+  const lista = activos().filter(p => (!ui.stockTipo || famDe(p) === ui.stockTipo))
     .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
   const unid = activos().reduce((a, p) => a + Math.max(0, p.stock), 0);
   return `<input class="search" id="stockQ" data-input="stockQ" placeholder="Buscar producto" value="${esc(ui.stockQ)}" aria-label="Buscar producto">
-  <div class="scroller"><button class="chip" type="button" data-action="stock-tipo" data-v="" aria-pressed="${!ui.stockTipo}">Todos</button>${TIPOS.map(t => `<button class="chip" type="button" data-action="stock-tipo" data-v="${t}" aria-pressed="${ui.stockTipo === t}">${t}</button>`).join("")}</div>
+  <div class="chips mat-chips"><button class="chip" type="button" data-action="stock-tipo" data-v="" aria-pressed="${!ui.stockTipo}">Todos (${activos().length})</button>${FAMILIAS.map(([f]) => [f, activos().filter(p => famDe(p) === f).length]).concat([["Otros", activos().filter(p => famDe(p) === "Otros").length]]).filter(([, n]) => n).map(([f, n]) => `<button class="chip" type="button" data-action="stock-tipo" data-v="${f}" aria-pressed="${ui.stockTipo === f}">${f} (${n})</button>`).join("")}</div>
   <p class="muted small" style="margin:0">${unid} unidades en stock · <span id="cuentaQ">${lista.filter(p => !q || buscaEn(p.nombre + " " + p.tipo).includes(q)).length}</span> productos</p>
   <section class="card" style="padding-block:4px">${lista.map(p => `<div class="prow tappable" data-action="ver-prod" data-c="${p.codigo}" role="button" tabindex="0" data-s="${esc(buscaEn(p.nombre + " " + p.tipo))}"${q && !buscaEn(p.nombre + " " + p.tipo).includes(q) ? " hidden" : ""}>
     ${thumb(p)}<div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)}${p.stock <= 0 ? " · Agotado" : ""}</div>${p.stock <= 0 ? tagHacer(p) : ""}${enRemate(p) ? `<span class="tag remate">Remate ${$(p.precioRemate)}</span>` : ""}</div>
