@@ -623,12 +623,12 @@ function vMateria() {
   if (seg === "empaque") { const items = kit().items, tot = Math.round(items.reduce((a, it) => a + kitCosto(it), 0)), faltan = items.filter(kitFalta).length;
     return `${tabs}<section class="card emp-hero"><span class="muted small">Empaque de cada pedido</span><b>${$(tot)}</b><span class="muted small">Se suma igual a todos los productos. Si un producto tiene su propio empaque enlazado (como la caja de anillos), ese reemplaza la caja.</span></section>
     ${faltan ? `<div class="warn">${faltan === 1 ? "Falta el precio de 1 cosa" : "Faltan los precios de " + faltan + " cosas"}. Tócalas para completarlas.</div>` : ""}
-    <section class="card" style="padding-block:4px">${items.map(it => `<div class="prow tappable" data-action="kit-edit" data-id="${esc(it.id)}" role="button" tabindex="0"><div class="grow"><div class="name">${esc(it.nombre)}${it.caja ? ' <span class="tag">caja</span>' : ""}</div><div class="muted small">${kitFalta(it) ? `<span class="tag loss">${it.precio === "" || it.precio == null ? "Falta precio" : "Falta: ¿para cuántos alcanza?"}</span>` : dec(it.rinde) > 1 ? `${$(it.precio)} ÷ ${decTxt(dec(it.rinde))} empaques` : "Por empaque"}</div></div><b class="num">${$u(kitCosto(it))}</b></div>`).join("")}</section>
+    <section class="card" style="padding-block:4px">${items.map(it => `<div class="prow tappable" data-action="kit-edit" data-id="${esc(it.id)}" role="button" tabindex="0"><div class="grow"><div class="name">${esc(it.nombre)}${it.caja ? ' <span class="tag">caja</span>' : ""}</div><div class="muted small">${kitFalta(it) ? `<span class="tag loss">${it.precio === "" || it.precio == null ? "Falta precio" : "Falta: ¿para cuántos alcanza?"}</span>` : dec(it.rinde) > 1 ? `${$(it.precio)} ÷ ${decTxt(dec(it.rinde))} empaques` : "Por empaque"}${provDe(it) ? ` · ${logo(provDe(it), "xs")} ${esc(provDe(it).nombre)}` : ""}</div></div><b class="num">${$u(kitCosto(it))}</b>${waProv(provDe(it)) ? `<a class="buy" href="${esc(waProv(provDe(it)))}" target="_blank" rel="noopener">Pedir</a>` : ""}</div>`).join("")}</section>
     <button class="btn block line" type="button" data-action="kit-edit">+ Agregar al empaque</button>`; }
   if (seg === "proveedores") {
     const lista = S.proveedores.slice().sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
     return `${tabs}<div class="row"><input class="search grow" id="matQ" data-input="matQ" placeholder="Buscar proveedor" value="${esc(ui.matQ)}" aria-label="Buscar proveedor"><button class="btn" type="button" data-action="new-prov">+ Proveedor</button></div>
-    <div class="prov-grid">${lista.map(v => { const n = S.materia.filter(m => m.proveedorId === v.id).length, s = buscaEn(v.nombre + " " + (v.instagram || ""));
+    <div class="prov-grid">${lista.map(v => { const n = S.materia.filter(m => m.proveedorId === v.id).length + kit().items.filter(it => +it.proveedorId === v.id).length, s = buscaEn(v.nombre + " " + (v.instagram || ""));
       return `<button type="button" class="prov-card" data-action="ver-prov" data-id="${v.id}" data-s="${esc(s)}"${q && !s.includes(q) ? " hidden" : ""}>${logo(v, "lg")}<b>${esc(v.nombre)}</b><span class="muted small" title="${esc(igHandle(v.instagram))}">${esc(igHandle(v.instagram))}</span><span class="tag">${n} insumo${n === 1 ? "" : "s"}</span></button>`; }).join("")
       || `<div class="empty" style="grid-column:1/-1"><div class="iso"></div><b>Aún no tienes proveedores</b><span class="small">Toca “+ Proveedor” para agregar el primero.</span></div>`}</div>`;
   }
@@ -660,6 +660,7 @@ function editKit(id) {
     <div class="field"><label for="kt_nombre">Qué es</label><input id="kt_nombre" data-kit="nombre" value="${esc(it.nombre)}" placeholder="Ej: Papel seda"></div>
     <div class="grid2"><div class="field"><label for="kt_precio">Lo compraste a</label><input id="kt_precio" inputmode="numeric" class="money-in" data-kit="precio" value="${it.precio === "" || it.precio == null ? "" : miles(it.precio)}" placeholder="$"></div>
     <div class="field"><label for="kt_rinde">Te alcanza para</label><input id="kt_rinde" inputmode="decimal" data-kit="rinde" value="${esc(decTxt(dec(it.rinde)))}" placeholder="Ej: 40"></div></div>
+    ${selectProv(it.proveedorId, "kit").replace('<option value="otro" >Otro…</option>', "").replace('<option value="otro" selected>Otro…</option>', "")}
     <p class="muted small" style="margin:-6px 0 0">Si el precio es por unidad, deja 1. Si compraste un paquete o un rollo, pon para cuántos empaques te alcanza.${it.nota ? " " + esc(it.nota) + "." : ""} Si no lo usas, pon 0 en el precio.</p>
     <label class="row" style="gap:8px"><input type="checkbox" data-kit="caja" ${it.caja ? "checked" : ""}> <span>Es la caja (se reemplaza cuando el producto tiene su propio empaque)</span></label>
     <div class="totals"><div class="t"><span>Te sale por empaque</span><span id="ktCosto">${$u(kitCosto(it))}</span></div></div>
@@ -667,6 +668,7 @@ function editKit(id) {
     ${id ? `<button class="btn block ghost" type="button" data-action="kit-del">Quitar del empaque</button>` : ""}`);
 }
 let editingProv = null;
+const waProv = v => { if (!v) return ""; const cel = String(v.celular || "").replace(/[^\d]/g, ""); return cel ? "https://wa.me/" + (cel.length === 10 ? "57" + cel : cel) : ""; };
 function verProv(id) {
   const v = S.proveedores.find(x => x.id === id); if (!v) return;
   const ins = S.materia.filter(m => m.proveedorId === v.id).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
@@ -681,6 +683,7 @@ function verProv(id) {
       ${ig ? `<div class="row between" style="gap:8px"><div class="grow" style="min-width:0"><span class="muted small">Instagram</span><br>${esc(igHandle(v.instagram))}</div><a class="buy" href="${esc(ig)}" target="_blank" rel="noopener">Abrir</a></div>` : ""}
       ${!cel && !v.direccion && !web && !ig ? `<p class="muted small" style="margin:0">Sin datos de contacto todavía.</p>` : ""}
     </section>
+    ${(() => { const kk = kit().items.filter(it => +it.proveedorId === v.id); return kk.length ? `<h3>Empaque fijo que le compras (${kk.length})</h3><section class="card" style="padding-block:4px">${kk.map(it => `<div class="prow"><div class="grow"><div class="name">${esc(it.nombre)}</div><div class="muted small">${dec(it.rinde) > 1 ? `${$(it.precio)} por ${decTxt(dec(it.rinde))}` : "Por unidad"}</div></div><b class="num">${$u(kitCosto(it))} c/u</b></div>`).join("")}</section>` : ""; })()}
     <h3>Insumos que le compras (${ins.length})</h3>
     ${ins.length ? `<section class="card" style="padding-block:4px">${ins.map(m => { const u = safeUrl(m.link); return `<div class="prow"><div class="grow"><div class="name">${esc(m.nombre)}</div><div class="muted small">${catDe(m) || "Sin categoría"} · <b class="num">${$u(unitario(m))}</b> ${infoCat(m).c}</div></div>${u ? `<a class="buy" href="${esc(u)}" target="_blank" rel="noopener">Comprar</a>` : ""}</div>`; }).join("")}</section>` : `<p class="muted small" style="margin:0">Todavía no hay insumos de este proveedor.</p>`}
     <button class="btn block" type="button" data-action="edit-prov" data-id="${v.id}">Editar proveedor</button>`);
@@ -1482,7 +1485,7 @@ document.addEventListener("click", e => {
       drawProdIns(); break; }
     case "pp-talla": { editing.talla = v; const nl = insLinks(editing).find(l => { const m = S.materia.find(x => x.id === l.id); return m && catDe(m) === "Nailon"; }); if (nl) nl.usa = nailonCollar(editing), editing.insumos = insLinks(editing).map(l => l.id === nl.id ? nl : l); drawProdIns(); break; }
     case "pp-hecho": { if (v === "0" && insLinks(editing).some(l => { const m = S.materia.find(x => x.id === l.id); return m && catDe(m) === "Reventa"; })) { toast("Quítale primero el insumo “Reventa” de abajo"); break; } editing.hecho = v === "1"; drawProdTot(); break; }
-    case "kit-save": { const it = editingKit; if (!String(it.nombre).trim()) { toast("Ponle nombre"); return; } it.nombre = it.nombre.trim();
+    case "kit-save": { const it = editingKit; if (!String(it.nombre).trim()) { toast("Ponle nombre"); return; } it.nombre = it.nombre.trim(); if (+it.proveedorId) it.proveedorId = +it.proveedorId; else delete it.proveedorId;
       const k = kit(), i = k.items.findIndex(x => x.id === it.id); if (i >= 0) k.items[i] = it; else k.items.push(it);
       guardar("ajustes", k); closeSheet(); render(); toast("Empaque actualizado en todos los productos"); break; }
     case "kit-del": { const k = kit(); k.items = k.items.filter(x => x.id !== editingKit.id); guardar("ajustes", k); closeSheet(); render(); toast("Quitado del empaque"); break; }
