@@ -349,3 +349,9 @@ nav.tabs svg{width:22px;height:22px}
 .color-chip button{border:0;background:none;color:var(--pink);font-size:16px;line-height:1;padding:0 2px;cursor:pointer}
 .prov-card{overflow:hidden}
 .prov-card>span.muted{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.color-grupo{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.color-chip .col-name{border:0;background:none;font:inherit;color:inherit;padding:0;cursor:pointer}
+.col-hay{background:#E8F5EC;border-color:#8DCAA8;color:#2E6B47}
+.col-poco{background:#FBF1DC;border-color:#E7B54D;color:#7A5A12}
+.col-falta{background:#F8E1E4;border-color:#C9566A;color:#8A2337}
+.tag.poco{background:#FBF1DC;color:#7A5A12}
