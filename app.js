@@ -1197,9 +1197,9 @@ function drawProdTot() {
 
 /* Materia prima */
 let editingMat = null;
-function editMat(id) {
+function editMat(id, copiaDe) {
   const nuevo = id == null;
-  const m = nuevo ? { id: Math.max(0, ...S.materia.map(x => x.id)) + 1, nombre: "", categoria: "", lugar: "", cantidad: 0, cantidadIngresada: "", presentacion: "unidades", precio: 0, link: "" } : { ...S.materia.find(x => x.id === id) };
+  const m = copiaDe ? (({ colores, predeterminado, enCasa, fotoIntento, ...r }) => ({ ...r, id: Math.max(0, ...S.materia.map(x => x.id)) + 1, nombre: String(r.nombre).replace(/\s*·.*$/, "") + " · " }))(copiaDe) : nuevo ? { id: Math.max(0, ...S.materia.map(x => x.id)) + 1, nombre: "", categoria: "", lugar: "", cantidad: 0, cantidadIngresada: "", presentacion: "unidades", precio: 0, link: "" } : { ...S.materia.find(x => x.id === id) };
   if (!nuevo && m.cantidadIngresada == null) { m.cantidadIngresada = m.cantidad; m.presentacion = "unidades"; }
   openSheet(nuevo ? "Nueva materia prima" : "Editar materia prima", `<div id="matForm" style="display:flex;flex-direction:column;gap:14px"></div>`, () => { editingMat = m; drawMatForm(); });
 }
@@ -1219,7 +1219,8 @@ function drawMatForm(focusId) {
     ${m.proveedorId === "otro" || (!m.proveedorId && m.lugar && !S.proveedores.length) ? `<div class="field"><label for="mm_lugar">¿Dónde lo compras?</label><input id="mm_lugar" data-mm="lugar" value="${esc(m.lugar)}"></div>` : ""}
     ${camposCompra(m, "mm")}
     <div class="field"><label for="mm_casa">¿Cuánto tienes en casa?</label><div class="row" style="gap:8px"><input id="mm_casa" inputmode="decimal" data-mm="enCasa" value="${tieneCasa(m) ? esc(decTxt(dec(m.enCasa))) : ""}" placeholder="Ej: 15"><span class="muted small" id="mm_casa_u">${infoCat(m).pl}</span></div><span class="muted small">Se descuenta sola cuando armas un producto agotado o vendes uno que tocó hacer.</span></div>
-    ${["Hilo", "Nailon", "Herrajes"].includes(catDe(m)) ? `<div class="field"><span class="lbl">Colores</span><span class="muted small">Toca un color para cambiar si hay, queda poco o se acabó.</span>
+    ${BASES.includes(catDe(m)) && S.materia.some(x => x.id === m.id) ? `<button class="btn block line" type="button" data-action="mm-dup">+ Otro color de este ${catDe(m) === "Herrajes" ? "herraje" : catDe(m).toLowerCase()} (mismo precio y foto)</button>` : ""}
+    ${["Nailon", "Herrajes"].includes(catDe(m)) ? `<div class="field"><span class="lbl">Colores</span><span class="muted small">Toca un color para cambiar si hay, queda poco o se acabó.</span>
       ${(() => { const cs = (m.colores || []).map((c, i) => ({ ...colorObj(c), i })); if (!cs.length) return '<span class="muted small">Todavía no has puesto colores</span>';
         return EST_COLOR.map(([e, lbl]) => { const g = cs.filter(c => c.estado === e).sort((a, b) => a.nombre.localeCompare(b.nombre, "es")); return g.length ? `<div class="color-grupo"><span class="small"><b>${lbl}</b> (${g.length})</span><div class="chips">${g.map(c => `<span class="chip color-chip col-${e}"><button type="button" class="col-name" data-action="mm-color-est" data-i="${c.i}">${esc(c.nombre)}</button><button type="button" data-action="mm-color-del" data-i="${c.i}" aria-label="Quitar ${esc(c.nombre)}">×</button></span>`).join("")}</div></div>` : ""; }).join(""); })()}
       <div class="row" style="gap:8px"><input id="mm_color" placeholder="Ej: Rosado pastel" aria-label="Nuevo color"><button class="btn sm" type="button" data-action="mm-color-add">Agregar</button></div></div>` : ""}
@@ -1505,6 +1506,7 @@ document.addEventListener("click", e => {
       guardar("proveedores", v); closeSheet(); ui.matSeg = "proveedores"; if (tab !== "materia") go("materia"); else render(); toast("Proveedor guardado"); break; }
     case "copiar": { const txt = v; (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast("Copiado"), () => toast(txt)); break; }
     case "mm-color-add": { const el = $id("mm_color"), c = el && el.value.trim(); if (!c) { toast("Escribe el color"); break; } editingMat.colores = [...(editingMat.colores || []), { nombre: c.charAt(0).toUpperCase() + c.slice(1), estado: "hay" }]; drawMatForm("mm_color"); break; }
+    case "mm-dup": { const base = S.materia.find(x => x.id === editingMat.id); closeSheet(); setTimeout(() => editMat(null, base), 50); break; }
     case "mm-color-est": { const i = +t.dataset.i, c = colorObj(editingMat.colores[i]), sig = { hay: "poco", poco: "falta", falta: "hay" }; editingMat.colores = editingMat.colores.map((x, k) => k === i ? { nombre: c.nombre, estado: sig[c.estado] || "hay" } : x); drawMatForm(); break; }
     case "mm-color-del": editingMat.colores = (editingMat.colores || []).filter((_, i) => i !== +t.dataset.i); drawMatForm(); break;
     case "mm-cat": editingMat.categoria = editingMat.categoria === v ? "" : v; drawMatForm(v === "Otro" && editingMat.categoria === "Otro" ? "mm_nuevacat" : undefined); break;
