@@ -186,9 +186,9 @@ const usaBase = p => /trio/i.test(p.tipo || "") ? 3 : /pareja/i.test(p.tipo || "
 const piezasDe = p => {
   if (esHecho(p)) return [["Reventa", "Lo que compraste (Reventa)"], ["Empaque", "Empaque propio (opcional)"]];
   const b = baseCat(p);
-  const base = b === "Hilo" ? [["Hilo", "Hilo"], ["Herrajes", "Herrajes (balines de los extremos)"], ["Dije", "Dije (opcional)"], ["Pasador", "Pasador (opcional)"], ["Mostacilla", "Mostacilla (opcional)"]]
-    : b === "Nailon" ? [["Nailon", "Nailon"], ["Dije", "Dije (opcional)"], ["Porta dije", "Porta dije (opcional)"], ["Mostacilla", "Mostacilla (opcional)"], ["Pasador", "Pasador (opcional)"]]
-    : b === "Cadena" ? [["Cadena", "Cadena"], ["Dije", "Dije"], ["Porta dije", "Porta dije (opcional)"], ["Pasador", "Pasador (opcional)"]]
+  const base = b === "Hilo" ? [["Hilo", "Base: Hilo"], ["Herrajes", "Herrajes (balines de los extremos)"], ["Dije", "Dije (opcional)"], ["Pasador", "Pasador (opcional)"], ["Mostacilla", "Mostacilla (opcional)"]]
+    : b === "Nailon" ? [["Nailon", "Base: Nailon"], ["Dije", "Dije (opcional)"], ["Porta dije", "Porta dije (opcional)"], ["Mostacilla", "Mostacilla (opcional)"], ["Pasador", "Pasador (opcional)"]]
+    : b === "Cadena" ? [["Cadena", "Base: Cadena"], ["Dije", "Dije"], ["Porta dije", "Porta dije (opcional)"], ["Pasador", "Pasador (opcional)"]]
     : [["Dije", "Dije (opcional)"], ["Pasador", "Pasador (opcional)"]];
   const extra = catsTodas().filter(c => !CAT_INS[c] && !base.some(([x]) => x === c)).map(c => [c, c + " (opcional)"]);
   const hay = c => S.materia.some(m => catDe(m) === c), puesta = c => insLinks(p).some(l => { const m = S.materia.find(x => x.id === l.id); return m && catDe(m) === c; });
@@ -632,10 +632,12 @@ function vMateria() {
       return `<button type="button" class="prov-card" data-action="ver-prov" data-id="${v.id}" data-s="${esc(s)}"${q && !s.includes(q) ? " hidden" : ""}>${logo(v, "lg")}<b>${esc(v.nombre)}</b><span class="muted small" title="${esc(igHandle(v.instagram))}">${esc(igHandle(v.instagram))}</span><span class="tag">${n} insumo${n === 1 ? "" : "s"}</span></button>`; }).join("")
       || `<div class="empty" style="grid-column:1/-1"><div class="iso"></div><b>Aún no tienes proveedores</b><span class="small">Toca “+ Proveedor” para agregar el primero.</span></div>`}</div>`;
   }
-  const todosG = [...catsTodas(), ""].map(c => [c, S.materia.filter(m => catDe(m) === c).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))]).filter(([, l]) => l.length);
+  /* Hilo, Nailon y Cadena van juntos como "Bases" */
+  const BASE3 = ["Hilo", "Nailon", "Cadena"], ordenar = l => l.sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  const todosG = [["Bases", ordenar(S.materia.filter(m => BASE3.includes(catDe(m))))], ...[...catsTodas(), ""].filter(c => !BASE3.includes(c)).map(c => [c, ordenar(S.materia.filter(m => catDe(m) === c))])].filter(([, l]) => l.length);
   if (ui.matCat != null && !todosG.some(([c]) => c === ui.matCat)) ui.matCat = null;
   /* Reventa se agrupa con las mismas categorías del catálogo (tipo del producto) */
-  const grupos = (ui.matCat == null ? todosG : todosG.filter(([c]) => c === ui.matCat)).flatMap(([c, l]) => { if (c !== "Reventa") return [[c, l]];
+  const grupos = (ui.matCat == null ? todosG : todosG.filter(([c]) => c === ui.matCat)).flatMap(([c, l]) => { if (c === "Bases") return BASE3.map(b => ["Bases · " + b, l.filter(m => catDe(m) === b)]).filter(([, x]) => x.length); if (c !== "Reventa") return [[c, l]];
     const por = {}; l.forEach(m => { const p = prodDeIns(m), k = p ? p.tipo || "Sin tipo" : "Sin producto enlazado"; (por[k] = por[k] || []).push(m); });
     const orden = TIPOS.filter(t => por[t]).concat(Object.keys(por).filter(k => !TIPOS.includes(k)));
     return orden.map(k => ["Reventa · " + k, por[k]]); });
