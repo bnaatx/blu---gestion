@@ -198,6 +198,7 @@ function drawPiezas() {
   const box = $id("ppPiezas"); if (!box || !editing || window._noPz) return; const p = editing;
   const links = linksEf(p), manual = false;
   const optsDe = (ops, selId, usados) => ops.filter(m => m.id === selId || !usados.includes(m.id)).map(m => `<option value="${m.id}" ${m.id === selId ? "selected" : ""}>${esc(m.nombre)} · ${$u(unitario(m))}</option>`).join("");
+  /* En hilos, nailon y cadenas el selector muestra el color/variante */
   const filaPieza = (cat, sel, ln, ops, usados, vacio) => { const usa = dec(ln.usa);
     return `<div class="row" style="gap:6px"><select class="grow" data-pieza="${cat}" data-old="${sel.id}"><option value="">${vacio}</option>${optsDe(ops, sel.id, usados)}</select><span class="muted small">×</span><input class="usa-in" inputmode="decimal" aria-label="Cuántas usa de ${esc(sel.nombre)}" data-pzusa="${sel.id}" value="${esc(decTxt(usa))}"></div>
       <span class="muted small">${esc(sel.nombre)}: ${unidadTxt(sel, usa)} · <b class="num" id="pzsub_${sel.id}">${$u(unitario(sel) * usa)}</b></span>
@@ -205,11 +206,12 @@ function drawPiezas() {
   box.innerHTML = `<div class="piezas">${piezasDe(p).map(([cat, lbl]) => { const ops = S.materia.filter(m => catDe(m) === cat).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
     const sels = links.map(l => ({ l, m: S.materia.find(m => m.id === l.id) })).filter(x => x.m && catDe(x.m) === cat), usados = sels.map(x => x.m.id), porDef = sels.some(x => x.l.defecto);
     const opcional = /opcional/.test(lbl), vacio = opcional ? "No lleva" : "Escoge…", id = "pz_" + cat.replace(/ /g, "");
+    if (cat === "Hilo" && sels.length) lbl = lbl + (usaBase(p) > 1 ? " · color (puedes poner uno por manilla)" : " · color");
     const libres = ops.filter(m => !usados.includes(m.id));
     return `<div class="field pieza"><label for="${id}">${lbl}${porDef ? ' <span class="tag">por defecto</span>' : ""}</label>
       ${sels.map(x => filaPieza(cat, x.m, x.l, ops, usados, sels.length > 1 ? "Quitar" : vacio)).join("")}
       ${!sels.length ? `<select id="${id}" data-pieza="${cat}" data-old=""><option value="">${vacio}</option>${optsDe(ops, null, [])}</select>`
-        : libres.length ? `<select class="otro-sel" id="${id}" data-pieza="${cat}" data-old=""><option value="">+ Agregar otro de ${cat.toLowerCase()}</option>${optsDe(libres, null, [])}</select>` : ""}
+        : libres.length ? `<select class="otro-sel" id="${id}" data-pieza="${cat}" data-old=""><option value="">+ Agregar otro ${cat === "Hilo" ? "color de hilo" : "de " + cat.toLowerCase()}</option>${optsDe(libres, null, [])}</select>` : ""}
       ${!ops.length ? `<span class="muted small">No tienes insumos de ${cat.toLowerCase()} en Materia.</span>` : ""}</div>${cat === "Herrajes" && /manilla/i.test(p.tipo || "") ? `<div class="row between" style="gap:8px;margin-top:-4px"><span class="small">Balines extra <span class="muted">(además de los ${2 * usaBase(p)} de los extremos)</span></span><div class="stepper"><button class="icon-btn" type="button" data-action="pp-extra" data-d="-1" aria-label="Quitar un balín extra">−</button><b>${n0(p.balinesExtra)}</b><button class="icon-btn" type="button" data-action="pp-extra" data-d="1" aria-label="Agregar un balín extra">+</button></div></div>` : ""}${cat === "Nailon" && esCollarT(p) ? `<div class="field"><span class="lbl">Talla del collar</span><div class="chips">${TALLAS.map(([n, cm]) => `<button class="chip" type="button" data-action="pp-talla" data-v="${n}" aria-pressed="${(p.talla || "Estándar") === n}">${n} · ${cm} cm</button>`).join("")}</div><span class="muted small">Usa ${tallaCm(p)} cm + ${MARGEN_NUDO} cm para amarres${usaBase(p) > 1 ? " × " + usaBase(p) : ""} = ${decTxt(nailonCollar(p))} m de nailon</span></div>` : ""}`; }).join("")}</div>
     ${manual ? `<p class="muted small" style="margin:0">Mientras no escojas, se usan los valores que tenía: ${n0(p.hilo) ? baseLbl(p).toLowerCase() + " " + $(p.hilo) : ""}${n0(p.hilo) && n0(p.dije) ? ", " : ""}${n0(p.dije) ? "dije " + $(p.dije) : ""}${n0(p.mostacillas) ? ", mostacillas " + $(p.mostacillas) : ""}${n0(p.compra) ? (n0(p.hilo) || n0(p.dije) ? ", " : "") + "otros " + $(p.compra) : ""}.</p>` : ""}`;
 }
@@ -617,9 +619,14 @@ async function subirFotoIns(m, file) {
 }
 const prodDeIns = m => S.productos.find(p => insLinks(p).some(l => l.id === m.id));
 const fotoInsBox = m => `${insThumb(m, "lg")}<div class="row wrap" style="gap:8px">${safeUrl(m.link) ? `<button class="btn sm" type="button" data-action="mm-traer">${m.foto ? "Volver a traer del link" : "Traer foto del link"}</button>` : ""}<label class="btn sm ghost filebtn">${m.foto ? "Cambiar" : "Subir foto"}<input type="file" id="mmFotoIn" accept="image/*"></label><label class="btn sm ghost filebtn solo-cel">📷 Tomar foto<input type="file" data-cam accept="image/*" capture="environment"></label>${m.foto ? `<button class="btn sm ghost" type="button" data-action="mm-quitar-foto">Quitar</button>` : ""}<span class="muted small solo-compu" style="flex-basis:100%">o pega un pantallazo con ⌘V, o arrastra la imagen aquí</span></div>`;
+/* Deduce la tienda a partir del link: por la web del proveedor o por su nombre dentro del dominio */
+const nucleoDominio = u => { const h = ((String(u || "").match(/^https?:\/\/([^/?#]+)/i) || [])[1] || "").toLowerCase(); if (!h) return "";
+  const partes = h.split(".").filter(p => !["www", "m", "es", "share", "onelink", "app", "com", "co", "net", "org", "store", "shop", "mx", "us"].includes(p)); return partes.sort((a, b) => b.length - a.length)[0] || ""; };
 function provPorLink(link) {
-  const l = buscaEn(lugarDeLink(link)); if (!l) return null;
-  return S.proveedores.find(v => { const n = buscaEn(v.nombre); return n && (n.includes(l) || l.includes(n.split(" ").pop())); }) || null;
+  const n = nucleoDominio(extraerUrl(link)); if (!n) return null;
+  return S.proveedores.find(v => v.web && nucleoDominio(v.web) === n)
+    || S.proveedores.find(v => buscaEn(v.nombre).split(/[^a-z0-9]+/).some(w => w.length >= 4 && !["bisuteria", "accesorios", "tienda", "papeleria", "joyeria", "store", "insumos"].includes(w) && n.includes(w)))
+    || null;
 }
 function vMateria() {
   const seg = ui.matSeg, q = buscaEn(ui.matQ);
@@ -1028,7 +1035,7 @@ function lugarDeLink(u) {
   const d = h.replace(/^www\.|^m\.|^api-/, "").toLowerCase();
   if (/shein/.test(d)) return "SHEIN"; if (/temu/.test(d)) return "TEMU"; if (/santorini/.test(d)) return "SANTORINI";
   if (/whimsofgirls/.test(d)) return "WHIMS"; if (/aliexpress/.test(d)) return "ALIEXPRESS"; if (/mercadolibre/.test(d)) return "MERCADO LIBRE"; if (/amazon/.test(d)) return "AMAZON";
-  return d ? d.split(".")[0].toUpperCase() : "";
+  const n = d.split(".")[0]; return n ? n.charAt(0).toUpperCase() + n.slice(1) : "";
 }
 let insForm = null;
 const opcionesCat = sel => `<option value="">Sin categoría</option>` + catsTodas().map(c => `<option ${c === sel ? "selected" : ""}>${c}</option>`).join("");
@@ -1575,7 +1582,9 @@ document.addEventListener("input", e => {
     drawProdTot(); return; }
   if (t.dataset.mm && editingMat) { const k = t.dataset.mm; editingMat[k] = t.type === "checkbox" ? t.checked : t.value;
     if (k === "link") { const m = editingMat; clearTimeout(window._linkT); window._linkT = setTimeout(() => { const b = $id("mmFoto"); if (b && editingMat === m) b.innerHTML = fotoInsBox(m); if (!m.foto && safeUrl(m.link)) fotoDeLink(m.link).then(img => { if (img && editingMat === m && !m.foto) { m.foto = img; m.fotoIntento = m.link; const b2 = $id("mmFoto"); if (b2) b2.innerHTML = fotoInsBox(m); } }); }, 700); }
-    if (k === "link") { const v = provPorLink(t.value), el = $id("mm_prov"); if (v && el && !el.value) { editingMat.proveedorId = v.id; el.value = String(v.id); } else { const l = lugarDeLink(t.value), le = $id("mm_lugar"); if (l && le && !le.value) { editingMat.lugar = l; le.value = l; } } }
+    if (k === "link" && /^https?:\/\//i.test(extraerUrl(t.value))) { const v = provPorLink(t.value), el = $id("mm_prov");
+      if (v) { if (+editingMat.proveedorId !== v.id) { editingMat.proveedorId = v.id; if (el) el.value = String(v.id); toast("Tienda: " + v.nombre); } }
+      else { const l = lugarDeLink(t.value); if (l && editingMat.proveedorId !== "otro") { editingMat.proveedorId = "otro"; editingMat.lugar = l; drawMatForm("mm_link"); toast("Tienda: " + l + " (no está en tus proveedores)"); return; } } }
     if (k === "proveedorId") { drawMatForm(); return; }
     refrescarPU(editingMat, "mm"); return; }
   if (t.dataset.usa && editing) { const id = +t.dataset.usa, l = insLinks(editing).map(x => x.id === id ? { ...x, usa: dec(t.value) } : x); editing.insumos = l;
@@ -1601,7 +1610,9 @@ document.addEventListener("change", e => {
   if (t.dataset.pieza && editing) { const cat = t.dataset.pieza, old = +t.dataset.old || 0, base = BASES.includes(cat);
     let ls = linksEf(editing).map(({ defecto, ...x }) => x);
     const prev = old && ls.find(l => l.id === old); ls = ls.filter(l => l.id !== old);
-    if (t.value) { const usa = prev ? prev.usa : usaDefecto(cat, editing); ls.push({ id: +t.value, usa }); }
+    if (t.value) { let usa = prev ? prev.usa : usaDefecto(cat, editing);
+      if (!prev && cat === "Hilo") { const otros = ls.filter(l => { const m = S.materia.find(x => x.id === l.id); return m && catDe(m) === "Hilo"; }); if (otros.length) { usa = 1.3; const o = otros[0]; o.usa = Math.max(1.3, Math.round((dec(o.usa) - 1.3) * 10) / 10); } }
+      ls.push({ id: +t.value, usa }); }
     editing.insumos = ls; drawProdIns(); return; }
   if (t.dataset.ins === "sel" && editing && t.value) { editing.insumos = [...insLinks(editing), { id: +t.value, usa: 1 }]; drawProdIns(); return; }
   if (t.dataset.change === "invmes") { ui.invMes = t.value; render(); }
