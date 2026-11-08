@@ -347,3 +347,5 @@ nav.tabs svg{width:22px;height:22px}
 .loss-txt{color:var(--loss);font-weight:600}
 .color-chip{display:inline-flex;align-items:center;gap:4px}
 .color-chip button{border:0;background:none;color:var(--pink);font-size:16px;line-height:1;padding:0 2px;cursor:pointer}
+.prov-card{overflow:hidden}
+.prov-card>span.muted{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
