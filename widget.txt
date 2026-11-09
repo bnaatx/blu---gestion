@@ -1,0 +1,94 @@
+// Blu · Semana — widget para Scriptable (iPad / iPhone)
+// Muestra la remodelación o el producto nuevo de la semana. Cambia cada viernes.
+// La primera vez ábrelo dentro de Scriptable para iniciar sesión (queda guardado en el Llavero del iPad).
+
+const SB = "https://wmhoqsewyvkeqlcovlef.supabase.co";
+const KEY = "sb_publishable_HWDJbidTJFW2j69OQ4o5Qg_euEsc6Wu";
+const APP = "https://bnaatx.github.io/blu---gestion/";
+const EPOCA_VIE = Date.UTC(2026, 10, 6, 5, 0, 0); // viernes 6 nov 2026, 00:00 Bogotá
+const SEMANA = 7 * 864e5;
+const ROSA = new Color("#D44B86"), ROSA2 = new Color("#B83A70"), BLANCO = Color.white(), SUAVE = new Color("#FFFFFF", 0.82);
+
+async function credenciales() {
+  if (Keychain.contains("blu_email") && Keychain.contains("blu_pass")) return [Keychain.get("blu_email"), Keychain.get("blu_pass")];
+  if (config.runsInWidget) throw new Error("Abre el script en Scriptable una vez para iniciar sesión");
+  const a = new Alert(); a.title = "Blu · iniciar sesión"; a.message = "Tu correo y contraseña de la app de Blu";
+  a.addTextField("Correo"); a.addSecureTextField("Contraseña"); a.addAction("Entrar"); a.addCancelAction("Cancelar");
+  if (await a.presentAlert() === -1) throw new Error("Cancelado");
+  const e = a.textFieldValue(0).trim(), p = a.textFieldValue(1);
+  Keychain.set("blu_email", e); Keychain.set("blu_pass", p); return [e, p];
+}
+async function token() {
+  const [email, password] = await credenciales();
+  const r = new Request(SB + "/auth/v1/token?grant_type=password");
+  r.method = "POST"; r.headers = { apikey: KEY, "Content-Type": "application/json" }; r.body = JSON.stringify({ email, password });
+  const j = await r.loadJSON();
+  if (!j.access_token) { Keychain.remove("blu_pass"); throw new Error("Correo o contraseña no coinciden. Abre el script para volver a entrar"); }
+  return j.access_token;
+}
+async function datos(tk) {
+  const r = new Request(SB + "/rest/v1/registros?select=coleccion,id,data&coleccion=in.(productos,ideas,ajustes)&limit=5000");
+  r.headers = { apikey: KEY, Authorization: "Bearer " + tk };
+  const rows = await r.loadJSON(); const S = { productos: [], ideas: [], ajustes: [] };
+  (rows || []).forEach(x => S[x.coleccion] && S[x.coleccion].push(x.data)); return S;
+}
+async function guardarSemana(tk, s) {
+  const r = new Request(SB + "/rest/v1/registros?on_conflict=user_id,coleccion,id");
+  r.method = "POST"; r.headers = { apikey: KEY, Authorization: "Bearer " + tk, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" };
+  r.body = JSON.stringify({ coleccion: "ajustes", id: "semana", data: s, actualizado: new Date().toISOString() });
+  try { await r.load(); } catch (e) {}
+}
+
+// Misma regla que la app: semana par = remodelación, semana impar = producto nuevo (si hay uno listo)
+const remo = p => p.remodelacion || "pendiente";
+const ideaLista = i => i.estado !== "hecho" && (i.origen === "reventa" ? i.estado === "listo" : true);
+function elegir(S, w) {
+  const remos = S.productos.filter(p => remo(p) === "pendiente").sort((a, b) => a.codigo - b.codigo);
+  const ideas = S.ideas.filter(ideaLista).sort((a, b) => String(a.creada || a.id).localeCompare(String(b.creada || b.id)));
+  if (w % 2 === 1 && ideas.length) return { id: "semana", w, tipo: "nuevo", ref: ideas[0].id };
+  if (remos.length) return { id: "semana", w, tipo: "remodelacion", ref: remos[0].codigo };
+  if (ideas.length) return { id: "semana", w, tipo: "nuevo", ref: ideas[0].id };
+  return { id: "semana", w, tipo: "nada" };
+}
+const ruta = f => !f ? "" : /^(https?:|data:)/i.test(f) ? f : SB + "/storage/v1/object/public/fotos/" + f;
+async function imagen(f) {
+  const u = ruta(f); if (!u) return null;
+  try { if (u.startsWith("data:")) return Image.fromData(Data.fromBase64String(u.split(",")[1])); return await new Request(u).loadImage(); } catch (e) { return null; }
+}
+const fecha = t => new Date(t).toLocaleDateString("es-CO", { weekday: "short", day: "numeric", month: "short", timeZone: "America/Bogota" }).replace(/\./g, "");
+
+async function armar() {
+  const w = Math.floor((Date.now() - EPOCA_VIE) / SEMANA);
+  const tk = await token(), S = await datos(tk);
+  let s = S.ajustes.find(a => a.id === "semana");
+  const vale = s && s.w === w && (s.tipo === "remodelacion" ? S.productos.some(p => p.codigo === s.ref) : s.tipo === "nuevo" ? S.ideas.some(i => i.id === s.ref) : true);
+  if (!vale) { s = elegir(S, w); await guardarSemana(tk, s); }
+
+  const wg = new ListWidget(); const g = new LinearGradient(); g.colors = [ROSA, ROSA2]; g.locations = [0, 1]; wg.backgroundGradient = g;
+  wg.setPadding(14, 14, 14, 14); wg.url = APP + "?semana=1";
+  const ini = EPOCA_VIE + w * SEMANA; wg.refreshAfterDate = new Date(Math.min(ini + SEMANA + 5 * 60e3, Date.now() + 6 * 3600e3));
+
+  let titulo = "", nombre = "Nada pendiente 🎉", detalle = "", foto = null, hecho = false;
+  if (s.tipo === "remodelacion") { const p = S.productos.find(x => x.codigo === s.ref); titulo = "🛠️ REMODELACIÓN DE LA SEMANA"; if (p) { nombre = p.nombre; detalle = p.tipo || ""; foto = await imagen(p.foto); hecho = remo(p) === "remodelado"; } }
+  else if (s.tipo === "nuevo") { const i = S.ideas.find(x => x.id === s.ref); titulo = "✨ PRODUCTO NUEVO DE LA SEMANA"; if (i) { nombre = i.nombre; detalle = (i.origen === "reventa" ? "Reventa" : (i.materiales || "Artesanal")); foto = await imagen(i.foto); hecho = i.estado === "hecho"; } }
+  else titulo = "BLU · ESTA SEMANA";
+
+  const fam = config.widgetFamily || "medium";
+  const t = wg.addText(titulo); t.font = Font.boldSystemFont(fam === "small" ? 9 : 11); t.textColor = SUAVE; t.lineLimit = 1;
+  wg.addSpacer(8);
+  const fila = wg.addStack(); fila.layoutHorizontally(); fila.centerAlignContent();
+  if (foto) { const im = fila.addImage(foto); const lado = fam === "small" ? 54 : fam === "large" ? 120 : 84; im.imageSize = new Size(lado, lado); im.cornerRadius = 14; fila.addSpacer(12); }
+  const col = fila.addStack(); col.layoutVertically();
+  const n = col.addText(nombre); n.font = Font.boldSystemFont(fam === "small" ? 14 : 19); n.textColor = BLANCO; n.lineLimit = 2; n.minimumScaleFactor = 0.7;
+  if (detalle && fam !== "small") { col.addSpacer(3); const d = col.addText(detalle); d.font = Font.systemFont(12); d.textColor = SUAVE; d.lineLimit = 3; }
+  if (hecho) { col.addSpacer(4); const h = col.addText("✓ Listo"); h.font = Font.boldSystemFont(12); h.textColor = BLANCO; }
+  wg.addSpacer();
+  const r = wg.addText(fecha(ini + 3600e3) + " – " + fecha(ini + 6 * 864e5 + 3600e3)); r.font = Font.systemFont(10); r.textColor = SUAVE;
+  return wg;
+}
+
+let w;
+try { w = await armar(); }
+catch (e) { w = new ListWidget(); w.backgroundColor = ROSA; const t = w.addText("Blu · " + e.message); t.textColor = BLANCO; t.font = Font.systemFont(12); }
+if (config.runsInWidget) Script.setWidget(w); else await w.presentMedium();
+Script.complete();

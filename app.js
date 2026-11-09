@@ -234,6 +234,77 @@ function puedeHacer(p, n = 1) {
 function gastarMateria(p, n) { if (n <= 0) return;
   linksEf(p).forEach(l => { const m = S.materia.find(x => x.id === l.id); if (!tieneCasa(m)) return; m.enCasa = Math.max(0, Math.round((dec(m.enCasa) - dec(l.usa) * n) * 100) / 100); guardar("materia", m); }); }
 const tagHacer = p => { const r = puedeHacer(p); if (!r) return ""; if (r.ok) return '<span class="tag ok">Se puede hacer</span>'; if (r.faltan.length) return `<span class="tag loss">Falta ${esc(r.faltan.slice(0, 2).join(", "))}${r.faltan.length > 2 ? "…" : ""}</span>`; return ""; };
+/* Productos nuevos (ideas) y plan de la semana: una semana remodelación, la siguiente producto nuevo. Cambia cada viernes. */
+const IDEA_EST = [["idea", "Idea"], ["pedido", "Pedido hecho"], ["listo", "Llegó / listo"], ["hecho", "Ya es producto"]];
+const ideaLista = i => i.estado !== "hecho" && (i.origen === "reventa" ? i.estado === "listo" : true);
+const EPOCA_VIE = Date.UTC(2026, 10, 6, 5, 0, 0);
+const semanaN = (t = Date.now()) => Math.floor((t - EPOCA_VIE) / (7 * 864e5));
+function elegirSemana(w) {
+  const remos = activos().filter(p => remo(p) === "pendiente").sort((a, b) => a.codigo - b.codigo);
+  const ideas = S.ideas.filter(ideaLista).sort((a, b) => String(a.creada || a.id).localeCompare(String(b.creada || b.id)));
+  if (w % 2 === 1 && ideas.length) return { w, tipo: "nuevo", ref: ideas[0].id };
+  if (remos.length) return { w, tipo: "remodelacion", ref: remos[0].codigo };
+  if (ideas.length) return { w, tipo: "nuevo", ref: ideas[0].id };
+  return { w, tipo: "nada" };
+}
+function semanaActual() {
+  const w = semanaN(); let s = S.ajustes.find(a => a.id === "semana");
+  const ok = s && s.w === w && (s.tipo === "remodelacion" ? S.productos.some(p => p.codigo === s.ref) : s.tipo === "nuevo" ? S.ideas.some(i => i.id === s.ref) : true);
+  if (!ok) { const nv = { id: "semana", ...elegirSemana(w) }; if (s) { Object.keys(s).forEach(k => delete s[k]); Object.assign(s, nv); } else S.ajustes.push(s = nv); guardar("ajustes", s); }
+  return s;
+}
+const rangoSemana = w => { const f = d => new Date(d).toLocaleDateString("es-CO", { weekday: "short", day: "numeric", month: "short", timeZone: "America/Bogota" }).replace(/\./g, ""); const ini = EPOCA_VIE + w * 7 * 864e5; return f(ini + 3600e3) + " – " + f(ini + 6 * 864e5 + 3600e3); };
+const ideaThumb = (i, cls = "") => { const u = rutaFoto(i.foto); return u ? `<img class="thumb ${cls}" src="${esc(u)}" alt="" loading="lazy" decoding="async">` : `<span class="thumb ph ${cls}" aria-hidden="true"></span>`; };
+function cardSemana() {
+  const s = semanaActual(); if (!s || s.tipo === "nada") return "";
+  if (s.tipo === "remodelacion") { const p = S.productos.find(x => x.codigo === s.ref); if (!p) return ""; const hecho = remo(p) === "remodelado";
+    return `<section class="card semana"><div class="row between"><span class="sem-tag">🛠️ Remodelación de la semana</span><span class="muted small">${rangoSemana(s.w)}</span></div>
+      <div class="row" style="gap:12px;align-items:center">${thumb(p, "lg")}<div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)}</div>${hecho ? '<span class="tag ok">✓ Remodelado</span>' : ""}</div></div>
+      <div class="row" style="gap:8px"><button class="btn sm ghost grow" type="button" data-action="ver-prod" data-c="${p.codigo}">Ver producto</button>${hecho ? "" : `<button class="btn sm grow" type="button" data-action="remo" data-c="${p.codigo}" data-v="remodelado">Ya lo remodelé</button>`}</div></section>`; }
+  const i = S.ideas.find(x => x.id === s.ref); if (!i) return ""; const hecho = i.estado === "hecho";
+  return `<section class="card semana"><div class="row between"><span class="sem-tag">✨ Producto nuevo de la semana</span><span class="muted small">${rangoSemana(s.w)}</span></div>
+    <div class="row" style="gap:12px;align-items:center">${ideaThumb(i, "lg")}<div class="grow"><div class="name">${esc(i.nombre)}</div><div class="muted small">${esc(i.tipo || "")} · ${i.origen === "reventa" ? "Reventa" : "Artesanal"}</div>${i.materiales ? `<div class="small" style="margin-top:2px">${esc(i.materiales).slice(0, 90)}</div>` : ""}${hecho ? '<span class="tag ok">✓ Ya es producto</span>' : ""}</div></div>
+    <div class="row" style="gap:8px"><button class="btn sm ghost grow" type="button" data-action="edit-idea" data-id="${esc(i.id)}">Ver idea</button>${safeUrl(i.compraLink) ? `<a class="btn sm ghost grow" href="${esc(safeUrl(i.compraLink))}" target="_blank" rel="noopener">Comprar</a>` : ""}${hecho ? "" : `<button class="btn sm grow" type="button" data-action="idea-prod" data-id="${esc(i.id)}">Crear producto</button>`}</div></section>`;
+}
+function vNuevos(q) {
+  const f = ui.ideaFiltro || "activas", lista = S.ideas.filter(i => f === "activas" ? i.estado !== "hecho" : i.estado === "hecho").sort((a, b) => String(a.creada || a.id).localeCompare(String(b.creada || b.id)));
+  const n = k => S.ideas.filter(i => k === "activas" ? i.estado !== "hecho" : i.estado === "hecho").length;
+  return `<button class="btn block" type="button" data-action="new-idea">+ Nuevo producto (idea)</button>
+  <p class="muted small" style="margin:0">Las ideas artesanales entran a la rotación de "Producto nuevo de la semana". Las de reventa entran solo cuando las marcas como <b>Llegó / listo</b>.</p>
+  <div class="chips mat-chips"><button class="chip" type="button" data-action="idea-filtro" data-v="activas" aria-pressed="${f === "activas"}">Por hacer (${n("activas")})</button><button class="chip" type="button" data-action="idea-filtro" data-v="hechas" aria-pressed="${f === "hechas"}">Ya son producto (${n("hechas")})</button></div>
+  <section class="card" style="padding-block:4px">${lista.map(i => { const e = (IDEA_EST.find(([k]) => k === (i.estado || "idea")) || IDEA_EST[0])[1]; return `<div class="prow tappable" data-action="edit-idea" data-id="${esc(i.id)}" role="button" tabindex="0"${q && !buscaEn(i.nombre).includes(q) ? " hidden" : ""}>${ideaThumb(i)}<div class="grow"><div class="name">${esc(i.nombre)}</div><div class="muted small">${esc(i.tipo || "")} · ${i.origen === "reventa" ? "Reventa" : "Artesanal"}</div><span class="tag">${e}</span>${ideaLista(i) ? ' <span class="tag ok">Entra a la semana</span>' : ""}</div></div>`; }).join("") || '<div class="empty">Todavía no tienes ideas. Agrega la primera con su inspo.</div>'}</section>`;
+}
+let editingIdea = null;
+function editIdea(id) {
+  const nueva = id == null, i = nueva ? { id: "i" + Date.now(), creada: new Date().toISOString(), nombre: "", tipo: TIPOS[0], origen: "artesanal", estado: "idea", inspoLink: "", compraLink: "", materiales: "", notas: "", foto: "" } : { ...S.ideas.find(x => x.id === id) };
+  editingIdea = i;
+  openSheet(nueva ? "Nuevo producto (idea)" : "Producto nuevo", `<div id="ideaForm" style="display:flex;flex-direction:column;gap:14px"></div>`, () => drawIdea());
+}
+function drawIdea(focusId) {
+  const i = editingIdea, box = $id("ideaForm"); if (!box) return; const u = rutaFoto(i.foto), tienda = safeUrl(i.compraLink) ? (provPorLink(i.compraLink) || {}).nombre || lugarDeLink(i.compraLink) : "";
+  box.innerHTML = `<div class="foto-edit">${u ? `<img class="foto-big" src="${esc(u)}" alt="Inspo">` : `<div class="foto-big ph">Sin foto de inspo</div>`}
+      <div class="row" style="gap:8px;flex-wrap:wrap"><label class="btn ${u ? "ghost" : ""} grow filebtn">${u ? "Cambiar inspo" : "Agregar foto de inspo"}<input type="file" id="idFotoIn" accept="image/*"></label><label class="btn ghost filebtn solo-cel">📷 Tomar foto<input type="file" data-cam accept="image/*" capture="environment"></label>${u ? `<button class="btn ghost" type="button" data-action="idea-quitar-foto">Quitar</button>` : ""}<span class="muted small solo-compu" style="flex-basis:100%">o pega un pantallazo con ⌘V, o arrastra la imagen aquí</span></div></div>
+    <div class="field"><label for="id_nombre">Nombre</label><input id="id_nombre" data-idea="nombre" value="${esc(i.nombre)}" placeholder="Ej: Manilla Stitch"></div>
+    <div class="field"><label for="id_tipo">Tipo</label><select id="id_tipo" data-idea="tipo">${TIPOS.map(t => `<option ${t === i.tipo ? "selected" : ""}>${t}</option>`).join("")}</select></div>
+    <div class="field"><span class="lbl">Origen</span><div class="seg"><button type="button" data-action="idea-origen" data-v="artesanal" aria-pressed="${i.origen !== "reventa"}">Artesanal</button><button type="button" data-action="idea-origen" data-v="reventa" aria-pressed="${i.origen === "reventa"}">Reventa</button></div></div>
+    <div class="field"><label for="id_inspo">Link de la inspo (Pinterest, TikTok, Instagram…)</label><input id="id_inspo" type="url" data-idea="inspoLink" value="${esc(i.inspoLink)}" placeholder="https://"></div>
+    <div class="field"><label for="id_compra">${i.origen === "reventa" ? "Dónde comprarlo" : "Dónde comprar los materiales"}</label><input id="id_compra" type="url" data-idea="compraLink" value="${esc(i.compraLink)}" placeholder="https://">${tienda ? `<span class="muted small">Tienda: <b>${esc(tienda)}</b></span>` : ""}</div>
+    ${i.origen === "reventa" ? "" : `<div class="field"><label for="id_mat">Con qué hacerlo</label><textarea id="id_mat" data-idea="materiales" rows="3" placeholder="Ej: hilo coreano negro, dije de Stitch, 6 letras">${esc(i.materiales)}</textarea></div>`}
+    <div class="field"><span class="lbl">Estado</span><div class="chips">${IDEA_EST.filter(([k]) => i.origen === "reventa" || k !== "pedido").map(([k, l]) => `<button class="chip" type="button" data-action="idea-est" data-v="${k}" aria-pressed="${(i.estado || "idea") === k}">${l}</button>`).join("")}</div>
+      <span class="muted small">${i.origen === "reventa" ? "Solo entra a \"Producto nuevo de la semana\" cuando la marques como <b>Llegó / listo</b>." : "Entra a la rotación de \"Producto nuevo de la semana\"."}</span></div>
+    <div class="field"><label for="id_notas">Notas</label><textarea id="id_notas" data-idea="notas" rows="2">${esc(i.notas)}</textarea></div>
+    <div class="row" style="gap:8px;flex-wrap:wrap">${safeUrl(i.inspoLink) ? `<a class="btn ghost grow" href="${esc(safeUrl(i.inspoLink))}" target="_blank" rel="noopener">Ver inspo</a>` : ""}${safeUrl(i.compraLink) ? `<a class="btn ghost grow" href="${esc(safeUrl(i.compraLink))}" target="_blank" rel="noopener">Comprar</a>` : ""}</div>
+    <button class="btn block" type="button" data-action="save-idea">Guardar</button>
+    ${S.ideas.some(x => x.id === i.id) && i.estado !== "hecho" ? `<button class="btn block line" type="button" data-action="idea-prod" data-id="${esc(i.id)}">Crear el producto con esta idea</button>` : ""}
+    ${S.ideas.some(x => x.id === i.id) ? `<button class="btn block ghost" type="button" data-action="del-idea">Borrar idea</button>` : ""}`;
+  if (focusId) { const el = $id(focusId); if (el) el.focus(); }
+}
+async function subirFotoGen(file, prefijo) {
+  toast("Subiendo foto…");
+  try { const blob = await comprimirFoto(file), path = uid + "/" + prefijo + "-" + Date.now() + ".jpg";
+    const { error } = await sb.storage.from("fotos").upload(path, blob, { contentType: "image/jpeg", cacheControl: "31536000", upsert: false }); if (error) throw error; return path; }
+  catch (e) { console.error(e); toast("No se pudo subir la foto. Revisa tu conexión"); return null; }
+}
 const manoDe = p => esHecho(p) ? 0 : n0(p.manoObra);
 const activos = () => S.productos.filter(p => remo(p) !== "archivado");
 
@@ -262,10 +333,10 @@ const sb = window.supabase.createClient(window.BLU_CONFIG.supabaseUrl, window.BL
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
 });
 let uid = null, email = "";
-let S = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [], proveedores: [], ajustes: [] };
+let S = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [], proveedores: [], ajustes: [], ideas: [] };
 let estado = "cargando"; // cargando | listo | error
-const COLS = ["productos", "materia", "pedidos", "contenido", "inversiones", "proveedores", "ajustes"];
-const ID_OF = { productos: p => String(p.codigo), materia: m => String(m.id), pedidos: p => p.id, contenido: c => c.id, inversiones: i => i.id, proveedores: v => String(v.id), ajustes: a => a.id };
+const COLS = ["productos", "materia", "pedidos", "contenido", "inversiones", "proveedores", "ajustes", "ideas"];
+const ID_OF = { productos: p => String(p.codigo), materia: m => String(m.id), pedidos: p => p.id, contenido: c => c.id, inversiones: i => i.id, proveedores: v => String(v.id), ajustes: a => a.id, ideas: i => i.id };
 
 async function cargar() {
   const rows = [];
@@ -275,7 +346,7 @@ async function cargar() {
     rows.push(...data);
     if (data.length < 1000) break;
   }
-  const n = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [], proveedores: [], ajustes: [] };
+  const n = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [], proveedores: [], ajustes: [], ideas: [] };
   rows.forEach(r => { if (n[r.coleccion]) n[r.coleccion].push(r.data); });
   n.productos.sort((a, b) => a.codigo - b.codigo);
   n.materia.sort((a, b) => a.id - b.id);
@@ -370,6 +441,7 @@ function vInicio() {
       <label class="btn ${vacio ? "" : "ghost"} filebtn">Subir respaldo<input type="file" id="fileImport" accept=".json,application/json"></label>
     </section>`;
   return `${vacio ? importar : ""}
+  ${vacio ? "" : cardSemana()}
   <section class="states" aria-label="Pedidos por estado">
     ${ESTADOS.map(e => `<button type="button" class="state st-${e}" data-action="filtro-ped" data-v="${e}"><b>${cuenta(e)}</b><span>${EST_LABEL[e]}${e === "entregado" ? "<br>este mes" : ""}</span></button>`).join("")}
   </section>
@@ -554,6 +626,7 @@ function vCatalogo() {
       ${thumb(p)}<div class="grow"><div class="name">${esc(p.nombre)}</div><div class="muted small">${esc(p.tipo)} · #${p.codigo}</div>
       ${enRemate(p) ? `<span class="tag remate">Remate ${$(p.precioRemate)}</span>` : ""}${gm < 0 ? `<span class="tag loss">Pérdida al por mayor ${$(gm)}</span>` : ""}${!p.menor ? `<span class="tag loss">Sin precio</span>` : ""}</div>
       <div class="prices"><span>Costo</span><span>Mayor</span><span>Detal</span><b>${$(c)}</b><b>${$(p.mayor)}</b><b>${$(p.menor)}</b></div></div>`; }).join("") || '<div class="empty">Sin resultados</div>'}</section>`;
+  } else if (seg === "nuevos") { body = vNuevos(q);
   } else {
     const todos = S.productos, arch = todos.filter(p => remo(p) === "archivado").length, base = todos.filter(p => remo(p) === "pendiente" || remo(p) === "remodelado").length;
     const hechos = todos.filter(p => remo(p) === "remodelado").length;
@@ -577,7 +650,8 @@ function vCatalogo() {
   }
   return `<div class="seg" role="group" aria-label="Catálogo">
     <button type="button" data-action="seg" data-v="productos" aria-pressed="${seg === "productos"}">Productos</button>
-    <button type="button" data-action="seg" data-v="remodelacion" aria-pressed="${seg === "remodelacion"}">Remodelación</button></div>
+    <button type="button" data-action="seg" data-v="remodelacion" aria-pressed="${seg === "remodelacion"}">Remodelación</button>
+    <button type="button" data-action="seg" data-v="nuevos" aria-pressed="${seg === "nuevos"}">Nuevos</button></div>
   <div class="row"><input class="search grow" id="catQ" data-input="catQ" placeholder="Buscar" value="${esc(ui.catQ)}" aria-label="Buscar en catálogo">
   ${seg !== "remodelacion" ? `<button class="btn" type="button" data-action="new-prod">+ Nuevo</button>` : ""}</div>${body}`;
 }
@@ -790,7 +864,7 @@ function openSheet(title, html, onMount) {
   document.body.style.overflow = "hidden";
   onMount && onMount(sheetRoot.querySelector(".sheet"));
 }
-function closeSheet() { editingKit = null; editingProv = null; remateDraft = null; insForm = null; editPed = null; sheetRoot.innerHTML = ""; document.body.style.overflow = ""; draft = null; editing = null; editingMat = null; editingC = null; editingInv = null; }
+function closeSheet() { editingIdea = null; editingKit = null; editingProv = null; remateDraft = null; insForm = null; editPed = null; sheetRoot.innerHTML = ""; document.body.style.overflow = ""; draft = null; editing = null; editingMat = null; editingC = null; editingInv = null; }
 
 /* Nuevo pedido */
 let draft = null;
@@ -1164,9 +1238,9 @@ function verProd(codigo) {
 
 /* Producto */
 let editing = null;
-function editProd(codigo) {
+function editProd(codigo, preset) {
   const nuevo = codigo == null;
-  const p = nuevo ? { codigo: Math.max(100, ...S.productos.map(x => x.codigo)) + 1, nombre: "", tipo: TIPOS[1], hilo: 0, dije: 0, mostacillas: 0, compra: 0, manoObra: MO_CAT[TIPOS[1]], empaque: 2815, mayor: 0, menor: 0, stock: 0, remodelacion: "pendiente" } : { ...S.productos.find(x => x.codigo === codigo) };
+  const p = nuevo && preset ? Object.assign({ codigo: Math.max(100, ...S.productos.map(x => x.codigo)) + 1, nombre: "", tipo: TIPOS[1], hilo: 0, dije: 0, mostacillas: 0, compra: 0, manoObra: MO_CAT[TIPOS[1]], empaque: 2815, mayor: 0, menor: 0, stock: 0, remodelacion: "remodelado" }, preset) : nuevo ? { codigo: Math.max(100, ...S.productos.map(x => x.codigo)) + 1, nombre: "", tipo: TIPOS[1], hilo: 0, dije: 0, mostacillas: 0, compra: 0, manoObra: MO_CAT[TIPOS[1]], empaque: 2815, mayor: 0, menor: 0, stock: 0, remodelacion: "pendiente" } : { ...S.productos.find(x => x.codigo === codigo) };
   const f = (k, l, cls = "") => `<div class="field ${cls}"><label for="pp_${k}" id="lbl_${k}">${l}</label><input id="pp_${k}" inputmode="numeric" data-pp="${k}" value="${k === "stock" ? (p[k] || "") : miles(p[k])}" placeholder="0"${k === "stock" ? "" : ' class="money-in"'}></div>`;
   openSheet(nuevo ? "Nuevo producto" : "Editar producto", `
     <div class="foto-edit" id="ppFoto"></div>
@@ -1482,12 +1556,26 @@ document.addEventListener("click", e => {
     case "arme": { const p = prodC(); p.stock = Math.max(0, p.stock) + 1; gastarMateria(p, 1); guardar("productos", p); render(); verProd(p.codigo); toast("Listo: +1 en stock y se descontó la materia prima"); break; }
     case "stock-det": { const p = prodC(); p.stock = Math.max(0, p.stock + (+t.dataset.d)); guardar("productos", p); render(); verProd(p.codigo); break; }
     case "new-prod": editProd(null); break;
+    case "new-idea": editIdea(null); break;
+    case "edit-idea": editIdea(t.dataset.id); break;
+    case "idea-filtro": ui.ideaFiltro = v; render(); break;
+    case "idea-origen": editingIdea.origen = v; if (v !== "reventa" && editingIdea.estado === "pedido") editingIdea.estado = "idea"; drawIdea(); break;
+    case "idea-est": editingIdea.estado = v; drawIdea(); break;
+    case "idea-quitar-foto": editingIdea.foto = ""; drawIdea(); break;
+    case "save-idea": { const i = editingIdea; if (!String(i.nombre).trim()) { toast("Ponle nombre"); return; } i.nombre = i.nombre.trim(); i.inspoLink = extraerUrl(i.inspoLink); i.compraLink = extraerUrl(i.compraLink);
+      const k = S.ideas.findIndex(x => x.id === i.id); if (k >= 0) S.ideas[k] = i; else S.ideas.push(i); guardar("ideas", i); closeSheet(); render(); toast("Idea guardada"); break; }
+    case "del-idea": { const id = editingIdea.id; S.ideas = S.ideas.filter(x => x.id !== id); borrar("ideas", id); closeSheet(); render(); toast("Idea borrada"); break; }
+    case "idea-prod": { const i = S.ideas.find(x => x.id === t.dataset.id) || editingIdea; closeSheet(); const reventa = i.origen === "reventa";
+      setTimeout(() => editProd(null, { nombre: i.nombre, tipo: i.tipo || TIPOS[1], manoObra: reventa ? 0 : MO_CAT[i.tipo] || 0, hecho: reventa, foto: i.foto && !/^https?:|^data:/i.test(i.foto) ? i.foto : "", _ideaId: i.id }), 60); break; }
     case "quitar-foto": { const p = editing, vieja = p.foto; p.foto = ""; const real = S.productos.find(x => x.codigo === p.codigo);
       if (real) { real.foto = ""; guardar("productos", real); render(); } if (vieja) sb.storage.from("fotos").remove([vieja]).catch(() => {}); drawProdFoto(); break; }
     case "save-prod": { const p = editing; ["hilo", "dije", "mostacillas", "compra", "manoObra", "empaque", "mayor", "menor"].forEach(k => p[k] = n0(p[k]));
       p.insumos = insLinks(p).map(l => ({ id: l.id, usa: dec(l.usa) || 1 })); if (usaInsumos(p)) Object.assign(p, materialesDe(p)); p.stock = parseInt(p.stock, 10) || 0; if (!p.nombre.trim()) { toast("Ponle nombre al producto"); return; }
       const i = S.productos.findIndex(x => x.codigo === p.codigo); if (i >= 0) S.productos[i] = p; else S.productos.push(p);
-      guardar("productos", p); closeSheet(); render(); toast("Producto guardado"); break; }
+      const ideaId = p._ideaId; delete p._ideaId;
+      guardar("productos", p);
+      if (ideaId) { const idea = S.ideas.find(x => x.id === ideaId); if (idea) { idea.estado = "hecho"; idea.productoCodigo = p.codigo; guardar("ideas", idea); } }
+      closeSheet(); render(); toast("Producto guardado"); break; }
     case "edit-mat": editMat(+t.dataset.id); break;
     case "new-mat": editMat(null); break;
     case "mat-cat": ui.matCat = v === "*" ? null : v; render(); break;
@@ -1548,7 +1636,7 @@ document.addEventListener("click", e => {
     case "actualizar": buscarActualizacion(true); break;
     case "excel": descargarExcel(); break;
     case "respaldo": descargarRespaldo(); break;
-    case "logout": sb.auth.signOut().then(() => { S = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [], proveedores: [], ajustes: [] }; uid = null; iniciar(null); }); break;
+    case "logout": sb.auth.signOut().then(() => { S = { productos: [], materia: [], pedidos: [], contenido: [], inversiones: [], proveedores: [], ajustes: [], ideas: [] }; uid = null; iniciar(null); }); break;
   }
 });
 document.addEventListener("keydown", e => {
@@ -1557,6 +1645,7 @@ document.addEventListener("keydown", e => {
 });
 document.addEventListener("input", e => {
   const t = e.target;
+  if (t.dataset.idea && editingIdea) { const k = t.dataset.idea; editingIdea[k] = t.value; if (k === "compraLink" || k === "inspoLink") { const u = extraerUrl(t.value); if (u !== t.value.trim() && /^https?:/i.test(u)) { t.value = u; editingIdea[k] = u; } } return; }
   if (t.hasAttribute && t.hasAttribute("data-pp-perso") && editing) { editing.personalizado = t.checked; return; }
   if (t.dataset.mm === "link" || t.dataset.inf === "link") { const u = extraerUrl(t.value); if (u !== t.value.trim() && /^https?:/i.test(u)) t.value = u; }
   if (t.dataset.palabra != null && editing) { const i = +t.dataset.palabra, id = +t.dataset.ins; editing.palabras = Array.from({ length: usaBase(editing) }, (_, k) => k === i ? t.value : (editing.palabras || [])[k] || "");
@@ -1604,6 +1693,8 @@ document.addEventListener("input", e => {
 });
 document.addEventListener("change", e => {
   const t = e.target;
+  if (t.dataset.idea && editingIdea) { editingIdea[t.dataset.idea] = t.value; if (t.dataset.idea === "compraLink") drawIdea(); return; }
+  if (t.id === "idFotoIn" && t.files && t.files[0] && editingIdea) { const i = editingIdea; subirFotoGen(t.files[0], "idea-" + i.id).then(path => { if (!path) return; i.foto = path; if (editingIdea === i) drawIdea(); toast("Foto lista. Dale Guardar"); }); return; }
   if (t.hasAttribute && t.hasAttribute("data-cam")) { const f = t.files && t.files[0]; t.value = ""; if (f) fotoDesdeArchivo(f); return; }
   if (t.hasAttribute && t.hasAttribute("data-pp-perso") && editing) { editing.personalizado = t.checked; return; }
   if (t.dataset.change === "mes") { ui.ventasMes = t.value; render(); }
@@ -1652,14 +1743,14 @@ sb.auth.onAuthStateChange((ev, session) => { if (ev === "SIGNED_OUT") iniciar(nu
 
 /* En el computador: pegar un pantallazo (⌘V) o arrastrar una imagen sube la foto del producto, insumo o proveedor abierto */
 function fotoDesdeArchivo(f) {
-  const inp = sheetRoot.querySelector("#ppFotoIn, #mmFotoIn, #pvLogoIn"); if (!inp || !f) return false;
+  const inp = sheetRoot.querySelector("#ppFotoIn, #mmFotoIn, #pvLogoIn, #idFotoIn"); if (!inp || !f) return false;
   try { const file = new File([f], f.name && f.name !== "image.png" ? f.name : "pantallazo.png", { type: f.type || "image/png" }); const dt = new DataTransfer(); dt.items.add(file); inp.files = dt.files; inp.dispatchEvent(new Event("change", { bubbles: true })); return true; }
   catch (e) { console.error(e); toast("Tu navegador no deja pegar la imagen. Usa Agregar foto"); return false; }
 }
 document.addEventListener("paste", e => {
   const it = [...((e.clipboardData && e.clipboardData.items) || [])].find(i => i.kind === "file" && /^image\//.test(i.type)); if (!it) return;
-  if (!sheetRoot.querySelector("#ppFotoIn, #mmFotoIn, #pvLogoIn")) { toast("Abre primero el producto, insumo o proveedor para pegarle la foto"); return; }
+  if (!sheetRoot.querySelector("#ppFotoIn, #mmFotoIn, #pvLogoIn, #idFotoIn")) { toast("Abre primero el producto, insumo o proveedor para pegarle la foto"); return; }
   e.preventDefault(); fotoDesdeArchivo(it.getAsFile());
 });
-document.addEventListener("dragover", e => { if (sheetRoot.querySelector("#ppFotoIn, #mmFotoIn, #pvLogoIn") && [...(e.dataTransfer.types || [])].includes("Files")) e.preventDefault(); });
-document.addEventListener("drop", e => { const f = [...((e.dataTransfer && e.dataTransfer.files) || [])].find(x => /^image\//.test(x.type)); if (f && sheetRoot.querySelector("#ppFotoIn, #mmFotoIn, #pvLogoIn")) { e.preventDefault(); fotoDesdeArchivo(f); } });
+document.addEventListener("dragover", e => { if (sheetRoot.querySelector("#ppFotoIn, #mmFotoIn, #pvLogoIn, #idFotoIn") && [...(e.dataTransfer.types || [])].includes("Files")) e.preventDefault(); });
+document.addEventListener("drop", e => { const f = [...((e.dataTransfer && e.dataTransfer.files) || [])].find(x => /^image\//.test(x.type)); if (f && sheetRoot.querySelector("#ppFotoIn, #mmFotoIn, #pvLogoIn, #idFotoIn")) { e.preventDefault(); fotoDesdeArchivo(f); } });
